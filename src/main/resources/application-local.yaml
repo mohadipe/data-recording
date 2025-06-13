@@ -1,0 +1,39 @@
+server:
+  port: ${PORT:9015}
+
+logging:
+  level:
+    org.atmosphere: debug
+    
+# Launch the default browser when starting the application in development mode
+vaadin:
+  launch-browser: true
+  # To improve the performance during development.
+  # For more information https://vaadin.com/docs/latest/flow/integrations/spring/configuration#special-configuration-parameters
+  allowed-packages: com.vaadin,org.vaadin,com.flowingcode,de.mohadipe
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 16MB
+      max-request-size: 16MB
+  jpa:
+    show-sql: false
+    database: mysql
+    database-platform: org.hibernate.dialect.H2Dialect
+    # Open-in-view is only needed if you use lazy-loaded entities in your Flow views.
+    open-in-view: false
+    # Initialize the JPA Entity Manager before considering data.sql so that the EM can create the schema and data.sql contain data
+    # defer-datasource-initialization: true
+    generate-dll: true
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: ${DDL_AUTO}
+  datasource:
+    driver: org.h2.Driver
+    username: sa
+    password:
+    url: jdbc:h2:file:~/h2/wertpapiere
