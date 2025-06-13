@@ -12,7 +12,6 @@ import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import de.mohadipe.data.recording.base.ui.component.ViewToolbar;
-import de.mohadipe.data.recording.taskmanagement.domain.Task;
 import de.mohadipe.data.recording.wertpapiere.domain.Etf;
 import de.mohadipe.data.recording.wertpapiere.service.EtfService;
 import jakarta.annotation.security.PermitAll;
@@ -39,7 +38,7 @@ public class EtfListView extends Main {
         wkn = new TextField();
         wkn.setPlaceholder("What do you want to do?");
         wkn.setAriaLabel("Etf WKN");
-        wkn.setMaxLength(Task.DESCRIPTION_MAX_LENGTH);
+        wkn.setMaxLength(Etf.DESCRIPTION_MAX_LENGTH);
         wkn.setMinWidth("20em");
 
         createBtn = new Button("Create", event -> createEtf());
