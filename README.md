@@ -1,21 +1,26 @@
 # Data Recording README
 
-- [ ] TODO Replace or update this README with instructions relevant to your application
-
-To start the application in development mode, import it into your IDE and run the `Application` class. 
-You can also start the application from the command line by running: 
-
-```bash
-./mvnw
+## Build Artifact
+```
+mvn clean install -Pproduction
 ```
 
-To build the application in production mode, run:
-
+## Build image
 ```bash
-./mvnw -Pproduction package
+docker build -t mohadipe/data-recording:0.0.1-SNAPSHOT .
 ```
 
-## Getting Started
+## Run Docker image
+```bash
+docker-compose up -d
+```
+
+## Stop Docker image
+```bash
+docker-compose down
+```
+
+## Vaadin Getting Started
 
 The [Getting Started](https://vaadin.com/docs/latest/getting-started) guide will quickly familiarize you with your new
 Data Recording implementation. You'll learn how to set up your development environment, understand the project 
