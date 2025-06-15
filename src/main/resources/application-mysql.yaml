@@ -3,9 +3,7 @@ server:
 
 logging:
   level:
-    org.springframework: debug
-    org.atmosphere: warn
-    de.mohadipe: debug
+    org.atmosphere: debug
     
 # Launch the default browser when starting the application in development mode
 vaadin:
@@ -32,9 +30,9 @@ spring:
       hibernate:
         format_sql: false
     hibernate:
-      ddl-auto: ${DDL_AUTO}
+      ddl-auto: none
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
-    password: ${MYSQL_ROOT_PASS}
-    url: jdbc:mysql://${DATASOURCE_URL_HOST}:3306/wertpapiere?useUnicode=true&characterEncoding=utf8&useSSL=false&useLegacyDatetimeCode=false&serverTimezone=UTC&createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true
+    password: mysql-root-pass
+    url: jdbc:mysql://localhost:3306/wertpapiere?useUnicode=true&characterEncoding=utf8&useSSL=false&useLegacyDatetimeCode=false&serverTimezone=UTC&createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true

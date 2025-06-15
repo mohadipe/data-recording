@@ -1,0 +1,17 @@
+services:
+  data-recording:
+    container_name: data-recording
+    image: mohadipe/data-recording:0.0.1-SNAPSHOT
+    # restart: always
+    ports:
+      - 9015:9015
+    volumes:
+      - C:\Users\mohadipe\Programmieren\logs\data-recording:/logs
+    environment:
+      DATASOURCE_URL_HOST: ${MYSQL_DB_HOST}
+      DDL_AUTO: "none"
+      MYSQL_ROOT_PASS: ${MYSQL_ROOT_PASS}
+
+networks:
+  default:
+    name: docker_default

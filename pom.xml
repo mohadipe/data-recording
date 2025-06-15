@@ -59,11 +59,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
+        <!-- https://mvnrepository.com/artifact/com.mysql/mysql-connector-j -->
         <dependency>
-            <!-- Replace with the database you will be using in production -->
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>runtime</scope>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>9.3.0</version>
         </dependency>
 
         <!-- Additional Spring Dependencies -->
@@ -111,6 +111,11 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <image>
+                        <name>mohadipe/data-recording</name>
+                    </image>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>com.diffplug.spotless</groupId>
