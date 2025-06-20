@@ -9,4 +9,6 @@ public interface WknWertDatumRepository extends JpaRepository<WknWertDatum, Long
 
     // If you don't need a total row count, Slice is better than Page.
     Slice<WknWertDatum> findAllBy(Pageable pageable);
+
+    Slice<WknWertDatum> findByWknId(Long wknId, Pageable pageable);
 }
