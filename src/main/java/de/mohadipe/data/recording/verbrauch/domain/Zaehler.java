@@ -11,6 +11,7 @@ import java.time.LocalDate;
 @Entity
 @Table(name = "zaehler")
 public class Zaehler extends AbstractEntity<Long> {
+    public static final int NUMBER_MAX_LENGTH = 100;
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false)
