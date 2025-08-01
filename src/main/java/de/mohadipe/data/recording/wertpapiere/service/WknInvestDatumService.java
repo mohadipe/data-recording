@@ -2,10 +2,9 @@ package de.mohadipe.data.recording.wertpapiere.service;
 
 import de.mohadipe.data.recording.wertpapiere.domain.WknInvestDatum;
 import de.mohadipe.data.recording.wertpapiere.domain.WknInvestDatumRepository;
-import de.mohadipe.data.recording.wertpapiere.ui.view.WknInvestDatumDTO;
+import de.mohadipe.data.recording.wertpapiere.view.model.WknInvestDatumDTO;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;

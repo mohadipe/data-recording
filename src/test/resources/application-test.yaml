@@ -14,7 +14,30 @@ vaadin:
 
 spring:
   jpa:
+    show-sql: false
+    database: mysql
+    database-platform: org.hibernate.dialect.H2Dialect
     # Open-in-view is only needed if you use lazy-loaded entities in your Flow views.
     open-in-view: false
     # Initialize the JPA Entity Manager before considering data.sql so that the EM can create the schema and data.sql contain data
+    # defer-datasource-initialization: true
+    generate-dll: true
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: ${DDL_AUTO}
+    # Initialize the JPA Entity Manager before considering data.sql so that the EM can create the schema and data.sql contain data
     defer-datasource-initialization: true
+  datasource:
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    url: jdbc:h2:file:~/h2/wertpapiere
+secondary:
+  datasource:
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    url: jdbc:h2:file:~/h2/verbrauch

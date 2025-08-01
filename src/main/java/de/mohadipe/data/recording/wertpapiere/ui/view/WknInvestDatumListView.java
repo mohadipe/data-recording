@@ -19,6 +19,7 @@ import de.mohadipe.data.recording.wertpapiere.domain.Etf;
 import de.mohadipe.data.recording.wertpapiere.domain.WknInvestDatum;
 import de.mohadipe.data.recording.wertpapiere.service.EtfService;
 import de.mohadipe.data.recording.wertpapiere.service.WknInvestDatumService;
+import de.mohadipe.data.recording.wertpapiere.view.model.WknInvestDatumDTO;
 import jakarta.annotation.security.PermitAll;
 import org.springframework.data.domain.Pageable;
 

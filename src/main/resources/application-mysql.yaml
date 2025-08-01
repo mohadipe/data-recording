@@ -32,7 +32,13 @@ spring:
     hibernate:
       ddl-auto: none
   datasource:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      username: root
+      password: mysql-root-pass
+      url: jdbc:mysql://localhost:3306/wertpapiere?useUnicode=true&characterEncoding=utf8&useSSL=false&useLegacyDatetimeCode=false&serverTimezone=UTC&createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true
+secondary:
+  datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: mysql-root-pass
-    url: jdbc:mysql://localhost:3306/wertpapiere?useUnicode=true&characterEncoding=utf8&useSSL=false&useLegacyDatetimeCode=false&serverTimezone=UTC&createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3306/verbrauch?useUnicode=true&characterEncoding=utf8&useSSL=false&useLegacyDatetimeCode=false&serverTimezone=UTC&createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true

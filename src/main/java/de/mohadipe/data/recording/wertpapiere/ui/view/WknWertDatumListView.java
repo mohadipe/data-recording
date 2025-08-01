@@ -16,11 +16,10 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import de.mohadipe.data.recording.base.ui.component.ViewToolbar;
 import de.mohadipe.data.recording.wertpapiere.domain.Etf;
-import de.mohadipe.data.recording.wertpapiere.domain.WknInvestDatum;
 import de.mohadipe.data.recording.wertpapiere.domain.WknWertDatum;
 import de.mohadipe.data.recording.wertpapiere.service.EtfService;
-import de.mohadipe.data.recording.wertpapiere.service.WknInvestDatumService;
 import de.mohadipe.data.recording.wertpapiere.service.WknWertDatumService;
+import de.mohadipe.data.recording.wertpapiere.view.model.WknWertDatumDTO;
 import jakarta.annotation.security.PermitAll;
 import org.springframework.data.domain.Pageable;
 

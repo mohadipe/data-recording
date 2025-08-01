@@ -1,4 +1,4 @@
-package de.mohadipe.data.recording.wertpapiere.ui.view;
+package de.mohadipe.data.recording.wertpapiere.view.model;
 
 import de.mohadipe.data.recording.wertpapiere.domain.WknWertDatum;
 

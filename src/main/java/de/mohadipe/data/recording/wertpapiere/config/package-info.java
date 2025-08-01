@@ -1,0 +1,1 @@
+package de.mohadipe.data.recording.wertpapiere.config;
