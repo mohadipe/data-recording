@@ -78,7 +78,7 @@ public class ZaehlerListView extends Main {
     }
 
     private void createZaehler() {
-        zaehlerService.createZaehler(zaehlerNummer.getValue(), einbauDatum.getValue(), ausbauDatum.getValue(), ZaehlerTyp.STROM.name());
+        zaehlerService.createZaehler(zaehlerNummer.getValue(), einbauDatum.getValue(), ausbauDatum.getValue(), zaehlerTyp.getValue().name());
         zaehlerGrid.getDataProvider().refreshAll();
         zaehlerNummer.clear();
         Notification.show("Zaehler added", 3000, Notification.Position.BOTTOM_END)
