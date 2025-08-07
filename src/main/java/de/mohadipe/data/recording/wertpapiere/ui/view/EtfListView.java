@@ -22,7 +22,7 @@ import static com.vaadin.flow.spring.data.VaadinSpringDataHelpers.toSpringPageRe
 
 @Route("etf-list")
 @PageTitle("Etf List")
-@Menu(order = 0, icon = "vaadin:clipboard-check", title = "Etf List")
+@Menu(order = 0, icon = "vaadin:file-text-o", title = "Etf List")
 @PermitAll // When security is enabled, allow all authenticated users
 public class EtfListView extends Main {
 

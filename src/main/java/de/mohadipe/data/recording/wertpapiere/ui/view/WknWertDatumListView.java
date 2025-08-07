@@ -32,7 +32,7 @@ import static com.vaadin.flow.spring.data.VaadinSpringDataHelpers.toSpringPageRe
 
 @Route("wkn-wert-datum-list")
 @PageTitle("Wkn Wert Datum List")
-@Menu(order = 0, icon = "vaadin:clipboard-check", title = "Wkn Wert Datum List")
+@Menu(order = 0, icon = "vaadin:money-withdraw", title = "Wkn Wert Datum List")
 @PermitAll // When security is enabled, allow all authenticated users
 public class WknWertDatumListView extends Main {
 

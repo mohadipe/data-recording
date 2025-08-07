@@ -26,7 +26,7 @@ import static com.vaadin.flow.spring.data.VaadinSpringDataHelpers.toSpringPageRe
 
 @Route("zaehler-list")
 @PageTitle("Zaehler List")
-@Menu(order = 0, icon = "vaadin:clipboard-check", title = "Zaehler List")
+@Menu(order = 0, icon = "vaadin:timer", title = "Zaehler List")
 @PermitAll // When security is enabled, allow all authenticated users
 public class ZaehlerListView extends Main {
 

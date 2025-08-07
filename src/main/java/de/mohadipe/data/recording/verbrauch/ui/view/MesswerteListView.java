@@ -32,7 +32,7 @@ import static com.vaadin.flow.spring.data.VaadinSpringDataHelpers.toSpringPageRe
 
 @Route("messwerte-list")
 @PageTitle("Messwerte List")
-@Menu(order = 0, icon = "vaadin:clipboard-check", title = "Messwerte List")
+@Menu(order = 0, icon = "vaadin:line-bar-chart", title = "Messwerte List")
 @PermitAll // When security is enabled, allow all authenticated users
 public class MesswerteListView extends Main {
 
