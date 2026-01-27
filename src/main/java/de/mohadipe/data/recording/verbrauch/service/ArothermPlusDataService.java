@@ -21,4 +21,19 @@ public class ArothermPlusDataService {
     public List<ArothermPlusData> list(Pageable pageable) {
         return arothermPlusDataRepository.findAll(pageable).toList();
     }
+
+    @Transactional
+    public ImportResult importData(List<ArothermPlusData> dataList) {
+        int imported = 0;
+        int ignored = 0;
+        for (ArothermPlusData data : dataList) {
+            if (!arothermPlusDataRepository.existsByDateTime(data.getDateTime())) {
+                arothermPlusDataRepository.save(data);
+                imported++;
+            } else {
+                ignored++;
+            }
+        }
+        return new ImportResult(imported, ignored);
+    }
 }
