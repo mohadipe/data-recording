@@ -26,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Locale;
 
 import static com.vaadin.flow.spring.data.VaadinSpringDataHelpers.toSpringPageRequest;
@@ -50,7 +51,8 @@ public class MesswerteListView extends Main {
 
         select = new Select<>();
         select.setLabel("Zaehler Nummer");
-        select.setItems(zaehlerService.list(Pageable.unpaged())); // Lädt alle ETFs
+        List<Zaehler> zaehlerList = zaehlerService.list(Pageable.unpaged());
+        select.setItems(zaehlerList);
         select.setItemLabelGenerator(Zaehler::getGeraeteNr);
 
         // datum
@@ -81,7 +83,9 @@ public class MesswerteListView extends Main {
 
         select.addValueChangeListener(event -> {
             Zaehler selectedZaehler = event.getValue();
-            updateGrid(selectedZaehler.getId());
+            if (selectedZaehler != null) {
+                updateGrid(selectedZaehler.getId());
+            }
         });
 
         setSizeFull();
@@ -92,6 +96,13 @@ public class MesswerteListView extends Main {
         add(new ViewToolbar("Wert for Zaehler", ViewToolbar.group(select, wertDatum, betrag, messEinheit, createBtn)));
 
         add(taskGrid);
+
+        if (!zaehlerList.isEmpty()) {
+            select.setValue(zaehlerList.get(0));
+        } else {
+            Notification.show("Es wurden noch keine Zähler angelegt.", 5000, Notification.Position.MIDDLE)
+                    .addThemeVariants(NotificationVariant.LUMO_WARNING);
+        }
     }
 
     private void updateGrid(Long zaehlerId) {
@@ -102,6 +113,11 @@ public class MesswerteListView extends Main {
 
     private void createMesswert() {
         Zaehler selectedZaehler = select.getValue();
+        if (selectedZaehler == null) {
+            Notification.show("Bitte wählen Sie zuerst einen Zähler aus.", 3000, Notification.Position.MIDDLE)
+                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
         Messwerte messwerte = new Messwerte();
         messwerte.setZaehler(selectedZaehler);
         messwerte.setWert(BigDecimal.valueOf(betrag.getValue()));
