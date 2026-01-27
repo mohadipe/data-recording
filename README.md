@@ -7,7 +7,7 @@ mvn clean install -Pproduction
 
 ## Build image
 ```bash
-docker build -t mohadipe/data-recording:1.0.4 .
+docker build -t mohadipe/data-recording:1.0.5 .
 ```
 
 ## Run Docker image
