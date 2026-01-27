@@ -21,4 +21,19 @@ public class HydraulicStationDataService {
     public List<HydraulicStationData> list(Pageable pageable) {
         return hydraulicStationDataRepository.findAll(pageable).toList();
     }
+
+    @Transactional
+    public ImportResult importData(List<HydraulicStationData> dataList) {
+        int imported = 0;
+        int ignored = 0;
+        for (HydraulicStationData data : dataList) {
+            if (!hydraulicStationDataRepository.existsByDateTime(data.getDateTime())) {
+                hydraulicStationDataRepository.save(data);
+                imported++;
+            } else {
+                ignored++;
+            }
+        }
+        return new ImportResult(imported, ignored);
+    }
 }
