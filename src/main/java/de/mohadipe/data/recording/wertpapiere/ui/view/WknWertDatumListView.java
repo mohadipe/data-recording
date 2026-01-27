@@ -72,9 +72,9 @@ public class WknWertDatumListView extends Main {
 
         taskGrid = new Grid<>();
         taskGrid.setItems(query -> wknWertDatumService.listAsDTO(toSpringPageRequest(query)).stream());
-        taskGrid.addColumn(WknWertDatumDTO::wknNummer).setHeader("WKN");
-        taskGrid.addColumn(WknWertDatumDTO::datum).setHeader("Datum");
-        taskGrid.addColumn(WknWertDatumDTO::wert).setHeader("Wert");
+        taskGrid.addColumn(WknWertDatumDTO::wknNummer).setHeader("WKN").setSortable(true).setSortProperty("wkn.wkn");
+        taskGrid.addColumn(WknWertDatumDTO::datum).setHeader("Datum").setSortable(true).setSortProperty("datum");
+        taskGrid.addColumn(WknWertDatumDTO::wert).setHeader("Wert").setSortable(true).setSortProperty("wert");
         taskGrid.setSizeFull();
 
         select.addValueChangeListener(event -> {

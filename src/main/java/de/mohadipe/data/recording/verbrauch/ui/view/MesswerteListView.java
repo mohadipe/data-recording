@@ -73,10 +73,10 @@ public class MesswerteListView extends Main {
 
         taskGrid = new Grid<>();
         taskGrid.setItems(query -> messwerteService.listAsDTO(toSpringPageRequest(query)).stream());
-        taskGrid.addColumn(MesswertDto::geraeteNummer).setHeader("GeräteNummer");
-        taskGrid.addColumn(MesswertDto::datum).setHeader("Datum");
-        taskGrid.addColumn(MesswertDto::wert).setHeader("Wert");
-        taskGrid.addColumn(MesswertDto::einheit).setHeader("Einheit");
+        taskGrid.addColumn(MesswertDto::geraeteNummer).setHeader("GeräteNummer").setSortable(true).setSortProperty("zaehler.geraeteNr");
+        taskGrid.addColumn(MesswertDto::datum).setHeader("Datum").setSortable(true).setSortProperty("datum");
+        taskGrid.addColumn(MesswertDto::wert).setHeader("Wert").setSortable(true).setSortProperty("wert");
+        taskGrid.addColumn(MesswertDto::einheit).setHeader("Einheit").setSortable(true).setSortProperty("einheit");
         taskGrid.setSizeFull();
 
         select.addValueChangeListener(event -> {

@@ -72,9 +72,9 @@ public class WknInvestDatumListView extends Main {
 
         taskGrid = new Grid<>();
         taskGrid.setItems(query -> wknInvestDatumService.listAsDTO(toSpringPageRequest(query)).stream());
-        taskGrid.addColumn(WknInvestDatumDTO::wknNummer).setHeader("WKN");
-        taskGrid.addColumn(WknInvestDatumDTO::datum).setHeader("Datum");
-        taskGrid.addColumn(WknInvestDatumDTO::invest).setHeader("Invest");
+        taskGrid.addColumn(WknInvestDatumDTO::wknNummer).setHeader("WKN").setSortable(true).setSortProperty("wkn.wkn");
+        taskGrid.addColumn(WknInvestDatumDTO::datum).setHeader("Datum").setSortable(true).setSortProperty("datum");
+        taskGrid.addColumn(WknInvestDatumDTO::invest).setHeader("Invest").setSortable(true).setSortProperty("invest");
         taskGrid.setSizeFull();
 
         select.addValueChangeListener(event -> {

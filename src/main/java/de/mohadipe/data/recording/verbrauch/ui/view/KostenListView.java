@@ -71,11 +71,11 @@ public class KostenListView extends Main {
 
         kostenGrid = new Grid<>();
         kostenGrid.setItems(query -> kostenService.list(toSpringPageRequest(query)).stream());
-        kostenGrid.addColumn(Kosten::getRessource).setHeader("Ressource");
-        kostenGrid.addColumn(Kosten::getVon).setHeader("Von Datum");
-        kostenGrid.addColumn(Kosten::getBis).setHeader("Bis Datum");
-        kostenGrid.addColumn(Kosten::getPreis).setHeader("Pries");
-        kostenGrid.addColumn(Kosten::getEinheit).setHeader("Einheit");
+        kostenGrid.addColumn(Kosten::getRessource).setHeader("Ressource").setSortable(true).setSortProperty("ressource");
+        kostenGrid.addColumn(Kosten::getVon).setHeader("Von Datum").setSortable(true).setSortProperty("von");
+        kostenGrid.addColumn(Kosten::getBis).setHeader("Bis Datum").setSortable(true).setSortProperty("bis");
+        kostenGrid.addColumn(Kosten::getPreis).setHeader("Pries").setSortable(true).setSortProperty("preis");
+        kostenGrid.addColumn(Kosten::getEinheit).setHeader("Einheit").setSortable(true).setSortProperty("einheit");
         kostenGrid.setSizeFull();
 
         setSizeFull();
