@@ -63,10 +63,10 @@ public class ZaehlerListView extends Main {
 
         zaehlerGrid = new Grid<>();
         zaehlerGrid.setItems(query -> zaehlerService.list(toSpringPageRequest(query)).stream());
-        zaehlerGrid.addColumn(Zaehler::getGeraeteNr).setHeader("Geraete Nr");
-        zaehlerGrid.addColumn(Zaehler::getEinbauDt).setHeader("Einbau Datum");
-        zaehlerGrid.addColumn(Zaehler::getAusbauDt).setHeader("Ausbau Datum");
-        zaehlerGrid.addColumn(Zaehler::getTyp).setHeader("Typ");
+        zaehlerGrid.addColumn(Zaehler::getGeraeteNr).setHeader("Geraete Nr").setSortable(true).setSortProperty("geraeteNr");
+        zaehlerGrid.addColumn(Zaehler::getEinbauDt).setHeader("Einbau Datum").setSortable(true).setSortProperty("einbauDt");
+        zaehlerGrid.addColumn(Zaehler::getAusbauDt).setHeader("Ausbau Datum").setSortable(true).setSortProperty("ausbauDt");
+        zaehlerGrid.addColumn(Zaehler::getTyp).setHeader("Typ").setSortable(true).setSortProperty("typ");
         zaehlerGrid.setSizeFull();
 
         setSizeFull();
