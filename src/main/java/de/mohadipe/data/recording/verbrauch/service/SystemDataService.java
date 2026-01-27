@@ -21,4 +21,19 @@ public class SystemDataService {
     public List<SystemData> list(Pageable pageable) {
         return systemDataRepository.findAll(pageable).toList();
     }
+
+    @Transactional
+    public ImportResult importData(List<SystemData> dataList) {
+        int imported = 0;
+        int ignored = 0;
+        for (SystemData data : dataList) {
+            if (!systemDataRepository.existsByDateTime(data.getDateTime())) {
+                systemDataRepository.save(data);
+                imported++;
+            } else {
+                ignored++;
+            }
+        }
+        return new ImportResult(imported, ignored);
+    }
 }
