@@ -1,1 +1,0 @@
-package de.mohadipe.data.recording.verbrauch.domain;
