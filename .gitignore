@@ -1,19 +1,57 @@
-/target/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Type checking & Linting
+.mypy_cache/
+.ruff_cache/
+
+# Environment variables & Local configuration
+.env
+*.local
+
+# IDEs & OS
 .idea/
 .vscode/
-.settings
-.project
-.classpath
-
-*.iml
+*.swp
+*.swo
+*~
 .DS_Store
-.env
-/logs
 
-# The following files are generated/updated by vaadin-maven-plugin
-node_modules/
-src/main/frontend/generated/
-vite.generated.ts
-
-# vadin
-src/main/bundles
+# Logs
+/logs/
+*.log
