@@ -1,4 +1,5 @@
 import logging
+
 from data_recorder.core.logging import setup_logging
 
 
