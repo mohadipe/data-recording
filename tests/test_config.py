@@ -1,5 +1,3 @@
-import os
-import pytest
 from data_recorder.core.config import Settings, get_settings
 
 
@@ -37,7 +35,10 @@ def test_database_url_generation():
         DB_NAME_VERBRAUCH="verbrauch",
     )
     url = settings.get_database_url("verbrauch")
-    assert url == "mysql+pymysql://recorder:mypassword@nas.local:3306/verbrauch?charset=utf8mb4"
+    assert (
+        url
+        == "mysql+pymysql://recorder:mypassword@nas.local:3306/verbrauch?charset=utf8mb4"
+    )
 
 
 def test_get_settings_cached():

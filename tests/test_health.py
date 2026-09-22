@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+
 from data_recorder.main import app
 
 

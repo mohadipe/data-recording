@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+
 import uvicorn
+from fastapi import FastAPI
 
 from data_recorder.api.routes_health import router as health_router
 from data_recorder.core.config import get_settings
