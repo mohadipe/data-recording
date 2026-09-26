@@ -53,5 +53,10 @@ coverage.xml
 .DS_Store
 
 # Logs
-/logs/
+logs/*
+!logs/.gitkeep
 *.log
+
+# Uploads
+data/uploads/*
+!data/uploads/.gitkeep
