@@ -1,0 +1,23 @@
+services:
+  data-recorder:
+    container_name: data-recorder
+    image: mohadipe/data-recorder:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "9015:9015"
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./data/uploads:/app/data/uploads
+    networks:
+      - synology_default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  synology_default:
+    name: synology_default
