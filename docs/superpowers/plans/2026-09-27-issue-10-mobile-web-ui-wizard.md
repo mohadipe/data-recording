@@ -28,12 +28,12 @@
 - Modify: `pyproject.toml` (package data inclusion)
 - Create: `tests/test_pwa_assets.py`
 
-- [ ] **Step 1: Write failing test for PWA manifest and icons**
-- [ ] **Step 2: Run test to verify failure**
-- [ ] **Step 3: Generate icons and write manifest.json**
-- [ ] **Step 4: Update pyproject.toml to include static assets and templates**
-- [ ] **Step 5: Run test to verify it passes**
-- [ ] **Step 6: Commit changes**
+- [x] **Step 1: Write failing test for PWA manifest and icons**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Generate icons and write manifest.json**
+- [x] **Step 4: Update pyproject.toml to include static assets and templates**
+- [x] **Step 5: Run test to verify it passes**
+- [x] **Step 6: Commit changes**
 
 ---
 
@@ -44,11 +44,11 @@
 - Modify: `src/data_recorder/main.py`
 - Create: `tests/test_api_wizard.py`
 
-- [ ] **Step 1: Write failing tests for `/api/zaehler`, `/api/zaehler/{id}/latest`, and `/api/wizard/extract-date`**
-- [ ] **Step 2: Run test to verify failure**
-- [ ] **Step 3: Implement endpoints in `src/data_recorder/api/routes_wizard.py` and register in `main.py`**
-- [ ] **Step 4: Run test to verify it passes**
-- [ ] **Step 5: Commit changes**
+- [x] **Step 1: Write failing tests for `/api/zaehler`, `/api/zaehler/{id}/latest`, and `/api/wizard/extract-date`**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Implement endpoints in `src/data_recorder/api/routes_wizard.py` and register in `main.py`**
+- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 5: Commit changes**
 
 ---
 
@@ -58,11 +58,11 @@
 - Modify: `src/data_recorder/api/routes_wizard.py`
 - Modify: `tests/test_api_wizard.py`
 
-- [ ] **Step 1: Write failing tests for `POST /wizard/submit` and `POST /api/wizard/submit` with multipart form data**
-- [ ] **Step 2: Run test to verify failure**
-- [ ] **Step 3: Implement database persistence and background Paperless upload**
-- [ ] **Step 4: Run test to verify it passes**
-- [ ] **Step 5: Commit changes**
+- [x] **Step 1: Write failing tests for `POST /wizard/submit` and `POST /api/wizard/submit` with multipart form data**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Implement database persistence and background Paperless upload**
+- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 5: Commit changes**
 
 ---
 
@@ -74,11 +74,11 @@
 - Modify: `src/data_recorder/api/routes_wizard.py` (render HTML on GET)
 - Create: `tests/test_wizard_ui.py`
 
-- [ ] **Step 1: Write failing test verifying HTML template rendering, active meters list, and step elements**
-- [ ] **Step 2: Run test to verify failure**
-- [ ] **Step 3: Implement `base.html` and `wizard.html` with responsive Tailwind UI, touch controls, camera input, and live plausibility logic**
-- [ ] **Step 4: Run test to verify it passes**
-- [ ] **Step 5: Commit changes**
+- [x] **Step 1: Write failing test verifying HTML template rendering, active meters list, and step elements**
+- [x] **Step 2: Run test to verify failure**
+- [x] **Step 3: Implement `base.html` and `wizard.html` with responsive Tailwind UI, touch controls, camera input, and live plausibility logic**
+- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 5: Commit changes**
 
 ---
 
@@ -87,9 +87,9 @@
 **Files:**
 - Create/Extend: `tests/test_wizard_integration.py`
 
-- [ ] **Step 1: Run comprehensive wizard integration test suite covering the full 3-step workflow**
-- [ ] **Step 2: Verify all 40+ existing tests and new tests pass cleanly**
-- [ ] **Step 3: Commit changes**
+- [x] **Step 1: Run comprehensive wizard integration test suite covering the full 3-step workflow**
+- [x] **Step 2: Verify all 40+ existing tests and new tests pass cleanly**
+- [x] **Step 3: Commit changes**
 
 ---
 
