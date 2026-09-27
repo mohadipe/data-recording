@@ -19,6 +19,7 @@ dependencies = [
     "jinja2",
     "python-multipart",
     "pillow",
+    "pillow-heif>=0.18.0",
     "piexif",
     "yfinance",
     "beautifulsoup4",

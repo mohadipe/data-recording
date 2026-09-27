@@ -45,3 +45,26 @@ def test_get_settings_cached():
     s1 = get_settings()
     s2 = get_settings()
     assert s1 is s2
+
+
+def test_paperless_and_upload_defaults():
+    settings = Settings()
+    assert settings.FAILED_UPLOADS_DIR == "data/failed_uploads"
+    assert settings.PAPERLESS_TAG == "Zaehlerbeleg"
+    assert settings.PAPERLESS_DOCUMENT_TYPE == "Zaehlerbeleg"
+
+
+def test_paperless_custom_env(monkeypatch):
+    monkeypatch.setenv("FAILED_UPLOADS_DIR", "/custom/failed")
+    monkeypatch.setenv("PAPERLESS_TAG", "CustomTag")
+    monkeypatch.setenv("PAPERLESS_DOCUMENT_TYPE", "CustomType")
+    monkeypatch.setenv("PAPERLESS_API_URL", "http://paperless.nas:8000")
+    monkeypatch.setenv("PAPERLESS_API_TOKEN", "token_xyz")
+
+    settings = Settings()
+    assert settings.FAILED_UPLOADS_DIR == "/custom/failed"
+    assert settings.PAPERLESS_TAG == "CustomTag"
+    assert settings.PAPERLESS_DOCUMENT_TYPE == "CustomType"
+    assert settings.PAPERLESS_API_URL == "http://paperless.nas:8000"
+    assert settings.PAPERLESS_API_TOKEN == "token_xyz"
+

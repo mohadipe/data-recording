@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     EBUSD_URL: str = "http://192.168.2.125:58888/data"
     PAPERLESS_API_URL: str = ""
     PAPERLESS_API_TOKEN: str = ""
+    PAPERLESS_TAG: str = "Zaehlerbeleg"
+    PAPERLESS_DOCUMENT_TYPE: str = "Zaehlerbeleg"
+    FAILED_UPLOADS_DIR: str = "data/failed_uploads"
 
     # Database Connection Override (e.g. for sqlite in tests)
     DATABASE_URL: str | None = None
