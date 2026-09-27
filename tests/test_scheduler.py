@@ -7,6 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 from data_recorder.core.scheduler import (
     ebus_hourly_poll_job,
     get_scheduler,
+    hibiscus_daily_poll_job,
     init_scheduler,
     oil_price_weekly_poll_job,
     shutdown_scheduler,
@@ -70,6 +71,24 @@ def test_init_scheduler_registers_stock_price_daily_job():
     assert hour_field == "22"
     assert minute_field == "30"
     assert day_of_week_field in ("mon-fri", "0-4")
+
+
+def test_init_scheduler_registers_hibiscus_daily_job():
+    """Tests that scheduler initialization registers the Hibiscus daily scanner job for 06:00."""
+    scheduler = init_scheduler()
+    jobs = scheduler.get_jobs()
+    job_ids = [j.id for j in jobs]
+    assert "hibiscus_daily_poll" in job_ids
+
+    hibiscus_job = scheduler.get_job("hibiscus_daily_poll")
+    assert hibiscus_job is not None
+    assert isinstance(hibiscus_job.trigger, CronTrigger)
+    hour_field = str(hibiscus_job.trigger.fields[hibiscus_job.trigger.FIELD_NAMES.index("hour")])
+    minute_field = str(
+        hibiscus_job.trigger.fields[hibiscus_job.trigger.FIELD_NAMES.index("minute")]
+    )
+    assert hour_field == "6"
+    assert minute_field == "0"
 
 
 @pytest.mark.asyncio
@@ -199,6 +218,30 @@ async def test_stock_price_daily_poll_job_zero_crash_on_exception():
         mock_poll.side_effect = RuntimeError("Yahoo Finance network error")
         await stock_price_daily_poll_job()
         assert mock_poll.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_hibiscus_daily_poll_job_calls_service():
+    """Tests that hibiscus_daily_poll_job calls HibiscusService.scan_and_import."""
+    from data_recorder.services.hibiscus_service import ScanResult
+
+    with patch(
+        "data_recorder.services.hibiscus_service.HibiscusService.scan_and_import"
+    ) as mock_scan:
+        mock_scan.return_value = ScanResult(scanned_count=5, imported_count=2)
+        await hibiscus_daily_poll_job()
+        assert mock_scan.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_hibiscus_daily_poll_job_zero_crash_on_exception():
+    """Tests that any unexpected exception in the hibiscus job is caught and does not crash."""
+    with patch(
+        "data_recorder.services.hibiscus_service.HibiscusService.scan_and_import"
+    ) as mock_scan:
+        mock_scan.side_effect = RuntimeError("Database unreachable")
+        await hibiscus_daily_poll_job()
+        assert mock_scan.call_count == 1
 
 
 @pytest.mark.asyncio

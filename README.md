@@ -170,6 +170,16 @@ chmod -R 775 logs data/uploads
   # Aktuellste erfasste Kurse aller Wertpapiere abrufen:
   curl http://192.168.2.125:9015/api/finance/latest
   ```
+* **Hibiscus-Kontoauszug-Scanner (Sparpläne & Dividenden):**
+  ```bash
+  # Hibiscus-Buchungen scannen, WKNs extrahieren und Sparpläne/Dividenden idempotent importieren:
+  curl -X POST http://192.168.2.125:9015/api/finance/scan-hibiscus
+
+  # Optional mit gezieltem Kontofilter:
+  curl -X POST http://192.168.2.125:9015/api/finance/scan-hibiscus \
+    -H "Content-Type: application/json" \
+    -d '{"account_filters": ["DEPOT123", "DE12760300801234567890"]}'
+  ```
 
 ---
 

@@ -1,9 +1,11 @@
+import asyncio
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from data_recorder.services.ebus_service import EbusService
+from data_recorder.services.hibiscus_service import HibiscusService
 from data_recorder.services.oil_price_service import OilPriceService
 from data_recorder.services.stock_price_service import StockPriceService
 
@@ -87,6 +89,28 @@ async def stock_price_daily_poll_job() -> None:
         )
 
 
+async def hibiscus_daily_poll_job() -> None:
+    """Täglicher Hintergrund-Job (06:00 Uhr) zum Scannen von Hibiscus-Buchungen für Sparpläne & Dividenden."""
+    logger.info("Starte täglichen Hibiscus-Kontoauszug-Scanner-Job...")
+    try:
+        service = HibiscusService()
+        result = await asyncio.to_thread(service.scan_and_import)
+        logger.info(
+            "Hibiscus-Scanner-Job erfolgreich abgeschlossen: %d gescannt, %d importiert (%d Sparpläne, %d Dividenden), %d übersprungen.",
+            result.scanned_count,
+            result.imported_count,
+            result.sparplaene_count,
+            result.dividenden_count,
+            result.skipped_count,
+        )
+    except Exception as exc:
+        logger.error(
+            "Unerwarteter Fehler im Hibiscus-Scanner-Job: %s. Scheduler läuft ungestört weiter.",
+            exc,
+            exc_info=True,
+        )
+
+
 def init_scheduler() -> AsyncIOScheduler:
     """Initializes and configures the APScheduler instance with all scheduled jobs."""
     global _scheduler
@@ -122,6 +146,17 @@ def init_scheduler() -> AsyncIOScheduler:
             trigger=CronTrigger(day_of_week="mon-fri", hour=22, minute=30),
             id="stock_price_daily_poll",
             name="Tägliche Tradegate-Kursabfrage (Mo-Fr 22:30)",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+
+    # Register Hibiscus daily scanner job every day at 06:00
+    if _scheduler.get_job("hibiscus_daily_poll") is None:
+        _scheduler.add_job(
+            hibiscus_daily_poll_job,
+            trigger=CronTrigger(hour=6, minute=0),
+            id="hibiscus_daily_poll",
+            name="Täglicher Hibiscus-Kontoauszug-Scanner (06:00)",
             replace_existing=True,
             misfire_grace_time=3600,
         )

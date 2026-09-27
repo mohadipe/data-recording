@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from data_recorder.core.database import get_db_session
 from data_recorder.models.wertpapiere import WknWertDatum
+from data_recorder.services.hibiscus_service import HibiscusService
 from data_recorder.services.stock_price_service import StockPriceService
 
 logger = logging.getLogger(__name__)
@@ -40,9 +41,45 @@ class UpdatePricesResponse(BaseModel):
     data: list[StockPriceItemResponse] = []
 
 
+class ScanHibiscusRequest(BaseModel):
+    """Optional filter parameters for Hibiscus scan."""
+
+    account_filters: list[str] | None = None
+
+
+class HibiscusImportedItemResponse(BaseModel):
+    """Schema for a single imported Hibiscus transaction."""
+
+    umsatz_id: int
+    wkn: str | None = None
+    isin: str | None = None
+    typ: str
+    datum: str
+    betrag: float
+
+
+class ScanHibiscusResponse(BaseModel):
+    """Schema for Hibiscus scan response."""
+
+    status: str
+    message: str
+    scanned_count: int
+    imported_count: int
+    skipped_count: int
+    sparplaene_count: int
+    dividenden_count: int
+    details: list[HibiscusImportedItemResponse] = []
+
+
 def get_wertpapiere_db():
     """Dependency provider for wertpapiere schema database session."""
     for session in get_db_session("wertpapiere"):
+        yield session
+
+
+def get_hibiscus_db():
+    """Dependency provider for hibiscus schema database session."""
+    for session in get_db_session("hibiscus"):
         yield session
 
 
@@ -146,3 +183,55 @@ async def get_latest_prices(
         )
 
     return [_serialize_stock_record(r) for r in records]
+
+
+@router.post(
+    "/scan-hibiscus",
+    response_model=ScanHibiscusResponse,
+    summary="Manueller Hibiscus-Kontoauszug-Scanner Trigger",
+    description=(
+        "Liest neue Buchungen aus der Hibiscus-Umsatztabelle, extrahiert WKNs/ISINs "
+        "und bucht Sparpläne in wkn_invest_datum sowie Dividenden in wkn_ertrag_datum."
+    ),
+)
+async def scan_hibiscus(
+    request: ScanHibiscusRequest | None = None,
+    session_wp: Session = Depends(get_wertpapiere_db),
+    session_hib: Session = Depends(get_hibiscus_db),
+) -> Any:
+    """Manuell ausgelöster Hibiscus-Scan für Sparpläne & Dividenden."""
+    service = HibiscusService()
+    account_filters = request.account_filters if request else None
+
+    result = service.scan_and_import(
+        session_wertpapiere=session_wp,
+        session_hibiscus=session_hib,
+        account_filters=account_filters,
+    )
+
+    items = [
+        HibiscusImportedItemResponse(
+            umsatz_id=d["umsatz_id"],
+            wkn=d.get("wkn"),
+            isin=d.get("isin"),
+            typ=d["typ"],
+            datum=d["datum"],
+            betrag=d["betrag"],
+        )
+        for d in result.details
+    ]
+
+    return ScanHibiscusResponse(
+        status="ok",
+        message=(
+            f"{result.scanned_count} Buchungen gescannt, "
+            f"{result.imported_count} importiert ({result.sparplaene_count} Sparpläne, "
+            f"{result.dividenden_count} Dividenden), {result.skipped_count} übersprungen."
+        ),
+        scanned_count=result.scanned_count,
+        imported_count=result.imported_count,
+        skipped_count=result.skipped_count,
+        sparplaene_count=result.sparplaene_count,
+        dividenden_count=result.dividenden_count,
+        details=items,
+    )
