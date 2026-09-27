@@ -13,6 +13,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./data/uploads:/app/data/uploads
+      - ./data/failed_uploads:/app/data/failed_uploads
     networks:
       - synology_default
     extra_hosts:
