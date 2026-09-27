@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     PAPERLESS_DOCUMENT_TYPE: str = "Zaehlerbeleg"
     FAILED_UPLOADS_DIR: str = "data/failed_uploads"
 
+    # Heating Oil Scraper Settings (PLZ 90579, 2500L)
+    HEIZOEL_PLZ: str = "90579"
+    HEIZOEL_MENGE_LITER: int = 2500
+    HEIZOEL_PROVIDER_URL: str = (
+        "https://www.esyoil.com/heizoelpreise/heizoel-bestellung"
+    )
+    HEIZOEL_SCRAPER_TIMEOUT: float = 15.0
+    HEIZOEL_SCRAPER_USER_AGENT: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    )
+
     # Database Connection Override (e.g. for sqlite in tests)
     DATABASE_URL: str | None = None
 

@@ -5,6 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from data_recorder.services.ebus_service import EbusService
+from data_recorder.services.oil_price_service import OilPriceService
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,32 @@ async def ebus_hourly_poll_job() -> None:
         )
 
 
+async def oil_price_weekly_poll_job() -> None:
+    """Wöchentlicher Hintergrund-Job zur Abfrage und Speicherung des regionalen Heizölpreises (Montags 08:00 Uhr)."""
+    logger.info("Starte wöchentlichen Heizölpreis-Polling-Job...")
+    try:
+        service = OilPriceService()
+        result = await service.poll_and_save()
+        if result:
+            logger.info(
+                "Heizölpreis-Job erfolgreich abgeschlossen: Datum=%s, PLZ=%s, Menge=%dL, Preis/L=%s €",
+                result.datum,
+                result.plz,
+                result.menge_liter,
+                result.preis_pro_liter,
+            )
+        else:
+            logger.warning(
+                "Heizölpreis-Job konnte keinen Preis erfassen (Anbieter vorübergehend nicht erreichbar oder kein Angebot)."
+            )
+    except Exception as exc:
+        logger.error(
+            "Unerwarteter Fehler im Heizölpreis-Polling-Job: %s. Scheduler läuft ungestört weiter.",
+            exc,
+            exc_info=True,
+        )
+
+
 def init_scheduler() -> AsyncIOScheduler:
     """Initializes and configures the APScheduler instance with all scheduled jobs."""
     global _scheduler
@@ -54,7 +81,19 @@ def init_scheduler() -> AsyncIOScheduler:
             misfire_grace_time=300,
         )
 
+    # Register oil price weekly job on Mondays at 08:00
+    if _scheduler.get_job("oil_price_weekly_poll") is None:
+        _scheduler.add_job(
+            oil_price_weekly_poll_job,
+            trigger=CronTrigger(day_of_week="mon", hour=8, minute=0),
+            id="oil_price_weekly_poll",
+            name="Wöchentliches Heizölpreis-Polling (Montag 08:00)",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+
     return _scheduler
+
 
 
 def get_scheduler() -> AsyncIOScheduler | None:

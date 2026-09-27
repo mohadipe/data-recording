@@ -8,6 +8,7 @@ from data_recorder.core.scheduler import (
     ebus_hourly_poll_job,
     get_scheduler,
     init_scheduler,
+    oil_price_weekly_poll_job,
     shutdown_scheduler,
     start_scheduler,
 )
@@ -28,6 +29,25 @@ def test_init_scheduler_registers_hourly_job():
     # Check trigger fields (minute=0)
     minute_field = str(ebus_job.trigger.fields[ebus_job.trigger.FIELD_NAMES.index("minute")])
     assert minute_field == "0"
+
+
+def test_init_scheduler_registers_oil_price_weekly_job():
+    """Tests that scheduler initialization registers the oil price weekly job for Monday 08:00."""
+    scheduler = init_scheduler()
+    jobs = scheduler.get_jobs()
+    job_ids = [j.id for j in jobs]
+    assert "oil_price_weekly_poll" in job_ids
+
+    oil_job = scheduler.get_job("oil_price_weekly_poll")
+    assert oil_job is not None
+    assert isinstance(oil_job.trigger, CronTrigger)
+    hour_field = str(oil_job.trigger.fields[oil_job.trigger.FIELD_NAMES.index("hour")])
+    minute_field = str(oil_job.trigger.fields[oil_job.trigger.FIELD_NAMES.index("minute")])
+    day_of_week_field = str(oil_job.trigger.fields[oil_job.trigger.FIELD_NAMES.index("day_of_week")])
+    assert hour_field == "8"
+    assert minute_field == "0"
+    assert day_of_week_field in ("mon", "0")
+
 
 
 @pytest.mark.asyncio
@@ -75,10 +95,55 @@ async def test_ebus_hourly_poll_job_zero_crash_on_exception():
 
 
 @pytest.mark.asyncio
+async def test_oil_price_weekly_poll_job_calls_service():
+    """Tests that oil_price_weekly_poll_job calls OilPriceService.poll_and_save."""
+    with patch(
+        "data_recorder.services.oil_price_service.OilPriceService.poll_and_save",
+        new_callable=AsyncMock,
+    ) as mock_poll:
+        mock_poll.return_value = None
+        await oil_price_weekly_poll_job()
+        assert mock_poll.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_oil_price_weekly_poll_job_success_logging():
+    """Tests that oil_price_weekly_poll_job logs success when record is returned."""
+    from unittest.mock import MagicMock
+    from decimal import Decimal
+    mock_record = MagicMock()
+    mock_record.datum = "2026-09-28"
+    mock_record.plz = "90579"
+    mock_record.menge_liter = 2500
+    mock_record.preis_pro_liter = Decimal("1.6562")
+
+    with patch(
+        "data_recorder.services.oil_price_service.OilPriceService.poll_and_save",
+        new_callable=AsyncMock,
+    ) as mock_poll:
+        mock_poll.return_value = mock_record
+        await oil_price_weekly_poll_job()
+        assert mock_poll.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_oil_price_weekly_poll_job_zero_crash_on_exception():
+    """Tests that any unexpected exception in the oil price job is caught and does not crash."""
+    with patch(
+        "data_recorder.services.oil_price_service.OilPriceService.poll_and_save",
+        new_callable=AsyncMock,
+    ) as mock_poll:
+        mock_poll.side_effect = RuntimeError("Scraper connection failed")
+        await oil_price_weekly_poll_job()
+        assert mock_poll.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_scheduler_lifecycle():
     """Tests start and shutdown of the global scheduler instance."""
     scheduler = init_scheduler()
     assert get_scheduler() is scheduler
+
 
     start_scheduler()
     assert scheduler.running
