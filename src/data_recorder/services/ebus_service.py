@@ -85,20 +85,23 @@ def calculate_cop(
 
 def _to_decimal(val: Any) -> Decimal | None:
     """Converts a value to Decimal safely."""
-    if val is None:
+    if val is None or isinstance(val, bool):
         return None
     if isinstance(val, (int, float)):
-        return Decimal(str(val))
+        try:
+            return Decimal(str(val))
+        except (InvalidOperation, ValueError):
+            return None
     if isinstance(val, str):
         val_str = val.strip()
-        if not val_str or val_str in ("-", "null", "none", "no data stored"):
+        if not val_str or val_str.lower() in ("-", "null", "none", "no data stored", "true", "false", "nan", "inf"):
             return None
         # Split on semicolon if multi-value string
         if ";" in val_str:
             val_str = val_str.split(";")[0]
         try:
             return Decimal(val_str)
-        except InvalidOperation:
+        except (InvalidOperation, ValueError):
             return None
     return None
 
@@ -114,17 +117,37 @@ def _extract_numeric_from_node(node: Any) -> Decimal | None:
       - {"values": {"0": {"value": 32.5}}}
       - {"values": {"value": 32.5}}
       - {"values": [32.5]}
+      - {"fields": {"temp": {"value": 32.5}}}
     """
     if node is None:
         return None
 
-    if isinstance(node, (int, float, str)):
+    if isinstance(node, (int, float, str)) and not isinstance(node, bool):
         return _to_decimal(node)
 
     if isinstance(node, dict):
+        # Ignore unpolled ebusd message metadata without payload
+        if "lastup" in node and "values" not in node and "value" not in node and "fields" not in node:
+            return None
+
         # Direct value key
         if "value" in node:
             return _extract_numeric_from_node(node["value"])
+
+        if "fields" in node:
+            fields_obj = node["fields"]
+            if isinstance(fields_obj, (int, float, str)):
+                return _to_decimal(fields_obj)
+            if isinstance(fields_obj, dict):
+                for preferred in ("value", "val", "temp", "energy", "s1", "0"):
+                    if preferred in fields_obj:
+                        extracted = _extract_numeric_from_node(fields_obj[preferred])
+                        if extracted is not None:
+                            return extracted
+                for v in fields_obj.values():
+                    extracted = _extract_numeric_from_node(v)
+                    if extracted is not None:
+                        return extracted
 
         if "values" in node:
             values_obj = node["values"]
@@ -143,11 +166,13 @@ def _extract_numeric_from_node(node: Any) -> Decimal | None:
                     if extracted is not None:
                         return extracted
 
-        # If dict has no "values", inspect sub-nodes
+        # If dict has no "values" or "fields", inspect sub-nodes
         for preferred in ("value", "val", "temp", "energy", "0"):
             if preferred in node:
                 return _extract_numeric_from_node(node[preferred])
-        for v in node.values():
+        for k, v in node.items():
+            if k in ("name", "passive", "write", "lastup", "zz", "poll"):
+                continue
             extracted = _extract_numeric_from_node(v)
             if extracted is not None:
                 return extracted
