@@ -62,3 +62,6 @@ data/uploads/*
 !data/uploads/.gitkeep
 data/shared_uploads/*
 !data/shared_uploads/.gitkeep
+
+# Java/Maven legacy build directory
+target/

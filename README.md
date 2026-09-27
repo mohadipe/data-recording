@@ -81,9 +81,11 @@ docker compose down
 
 ---
 
-## 🖥️ Bereitstellung auf der Synology DiskStation (Container Manager)
+## 🖥️ Bereitstellung auf der Synology DiskStation (nas-infra & Container Manager)
 
-Der Dienst ist für den dauerhaften Betrieb auf der **Synology DiskStation (DSM 7.2+)** via **Container Manager** optimiert.
+> 💡 **Empfohlen:** Die Bereitstellung erfolgt über das zentrale Orchestrierungs-Repository [`nas-infra`](https://github.com/mohadipe/nas-infra) im **Stack 03 (Apps)** via `./nas.sh up apps`.
+> Die vollständige Schritt-für-Schritt-Anleitung inklusive Image-Build, DDL-Migrationen, Ticker-Seeding und Verifikation findest du in:
+> 👉 **[Zur ausführlichen NAS-Deployment-Anleitung (nas-infra)](docs/nas_deployment_anleitung.md)**
 
 ### Voraussetzungen auf der Synology
 * **Container Manager** Paket über das DSM Paketzentrum installiert.
@@ -169,6 +171,16 @@ chmod -R 775 logs data/uploads
 
   # Aktuellste erfasste Kurse aller Wertpapiere abrufen:
   curl http://192.168.2.125:9015/api/finance/latest
+  ```
+* **Hibiscus-Kontoauszug-Scanner (Sparpläne & Dividenden):**
+  ```bash
+  # Hibiscus-Buchungen scannen, WKNs extrahieren und Sparpläne/Dividenden idempotent importieren:
+  curl -X POST http://192.168.2.125:9015/api/finance/scan-hibiscus
+
+  # Optional mit gezieltem Kontofilter:
+  curl -X POST http://192.168.2.125:9015/api/finance/scan-hibiscus \
+    -H "Content-Type: application/json" \
+    -d '{"account_filters": ["DEPOT123", "DE12760300801234567890"]}'
   ```
 
 ---
