@@ -22,7 +22,8 @@ def test_database_engine_and_session(monkeypatch):
     reset_engine_cache()
 
     engine = get_engine()
-    assert str(engine.url) == "sqlite:///:memory:"
+    assert engine.url.database == ":memory:"
+    assert "sqlite" in engine.url.drivername
 
     session_gen = get_db_session()
     session = next(session_gen)

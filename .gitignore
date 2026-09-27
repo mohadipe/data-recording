@@ -60,3 +60,6 @@ logs/*
 # Uploads
 data/uploads/*
 !data/uploads/.gitkeep
+
+# Java/Maven legacy build directory
+target/
