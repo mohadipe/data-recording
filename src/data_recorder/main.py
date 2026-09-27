@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from data_recorder.api.routes_health import router as health_router
+from data_recorder.api.routes_wizard import router as wizard_router
 from data_recorder.core.config import get_settings
 from data_recorder.core.logging import setup_logging
 
@@ -31,6 +32,7 @@ app = FastAPI(
 
 # Include API routers
 app.include_router(health_router)
+app.include_router(wizard_router)
 
 # Mount static directory and PWA manifest
 STATIC_DIR = Path(__file__).parent / "static"
