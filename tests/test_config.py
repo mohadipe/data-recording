@@ -68,3 +68,26 @@ def test_paperless_custom_env(monkeypatch):
     assert settings.PAPERLESS_API_URL == "http://paperless.nas:8000"
     assert settings.PAPERLESS_API_TOKEN == "token_xyz"
 
+
+def test_heizoel_settings_defaults():
+    settings = Settings()
+    assert settings.HEIZOEL_PLZ == "90579"
+    assert settings.HEIZOEL_MENGE_LITER == 2500
+    assert "esyoil.com" in settings.HEIZOEL_PROVIDER_URL
+    assert settings.HEIZOEL_SCRAPER_TIMEOUT == 15.0
+    assert "Mozilla" in settings.HEIZOEL_SCRAPER_USER_AGENT
+
+
+def test_heizoel_settings_custom_env(monkeypatch):
+    monkeypatch.setenv("HEIZOEL_PLZ", "90402")
+    monkeypatch.setenv("HEIZOEL_MENGE_LITER", "3000")
+    monkeypatch.setenv("HEIZOEL_PROVIDER_URL", "https://example.com/oil")
+    monkeypatch.setenv("HEIZOEL_SCRAPER_TIMEOUT", "20.5")
+
+    settings = Settings()
+    assert settings.HEIZOEL_PLZ == "90402"
+    assert settings.HEIZOEL_MENGE_LITER == 3000
+    assert settings.HEIZOEL_PROVIDER_URL == "https://example.com/oil"
+    assert settings.HEIZOEL_SCRAPER_TIMEOUT == 20.5
+
+
