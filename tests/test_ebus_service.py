@@ -13,6 +13,8 @@ from data_recorder.models.verbrauch import WaermepumpeStundenwert
 from data_recorder.services.ebus_service import (
     EbusMetrics,
     EbusService,
+    _extract_numeric_from_node,
+    _to_decimal,
     calculate_cop,
 )
 
@@ -318,3 +320,209 @@ async def test_poll_and_save_default_session(db_session: Session):
         assert saved is not None
         assert saved.zeitstempel == dt
         assert saved.cop_aktuell == Decimal("3.80")
+
+
+def test_to_decimal_various_inputs():
+    """Tests _to_decimal with various valid, invalid and edge-case inputs."""
+    assert _to_decimal(None) is None
+    assert _to_decimal(42) == Decimal("42")
+    assert _to_decimal(42.5) == Decimal("42.5")
+    assert _to_decimal(" 21.5 ") == Decimal("21.5")
+    assert _to_decimal("") is None
+    assert _to_decimal("-") is None
+    assert _to_decimal("null") is None
+    assert _to_decimal("none") is None
+    assert _to_decimal("no data stored") is None
+    assert _to_decimal("32.5;ok") == Decimal("32.5")
+    assert _to_decimal("not_a_number") is None
+    assert _to_decimal({"unsupported": 1}) is None
+
+
+def test_extract_numeric_from_node_various_structures():
+    """Tests _extract_numeric_from_node across all supported and fallback JSON shapes."""
+    assert _extract_numeric_from_node(None) is None
+    assert _extract_numeric_from_node(55) == Decimal("55")
+    assert _extract_numeric_from_node("44.4") == Decimal("44.4")
+    assert _extract_numeric_from_node({"value": 12.3}) == Decimal("12.3")
+    assert _extract_numeric_from_node({"values": 45.6}) == Decimal("45.6")
+    assert _extract_numeric_from_node({"values": "78.9"}) == Decimal("78.9")
+    assert _extract_numeric_from_node({"values": [99.1, 100.2]}) == Decimal("99.1")
+    assert _extract_numeric_from_node({"values": {"val": 13.5}}) == Decimal("13.5")
+    assert _extract_numeric_from_node({"values": {"0": 14.5}}) == Decimal("14.5")
+    assert _extract_numeric_from_node({"values": {"custom_unmapped_key": 88.8}}) == Decimal("88.8")
+    assert _extract_numeric_from_node({"values": {"empty": None}}) is None
+    assert _extract_numeric_from_node({"val": 23.4}) == Decimal("23.4")
+    assert _extract_numeric_from_node({"energy": 56.7}) == Decimal("56.7")
+    assert _extract_numeric_from_node({"0": 67.8}) == Decimal("67.8")
+    assert _extract_numeric_from_node({"unmapped": 78.9}) == Decimal("78.9")
+    assert _extract_numeric_from_node([123.4, 567.8]) == Decimal("123.4")
+    assert _extract_numeric_from_node([]) is None
+    assert _extract_numeric_from_node({}) is None
+    assert _extract_numeric_from_node(object()) is None
+
+
+def test_find_message_node_top_level_and_circuits():
+    """Tests _find_message_node with top-level keys, circuit messages and non-existent keys."""
+    service = EbusService()
+    # Top level match
+    assert service._find_message_node({"OutdoorTemp": {"value": 15.0}}, ["outdoortemp"]) == {"value": 15.0}
+    # Circuit messages dict match
+    assert service._find_message_node({"circuit1": {"messages": {"FlowTemp": 30.0}}}, ["flowtemp"]) == 30.0
+    # Circuit direct dict match
+    assert service._find_message_node({"circuit1": {"FlowTemp": 31.0}}, ["flowtemp"]) == 31.0
+    # Non-existent
+    assert service._find_message_node({"foo": "bar"}, ["nonexistent"]) is None
+
+
+def test_extract_metrics_default_timestamp_and_fallbacks():
+    """Tests extract_metrics with default timestamp, partial Status01, and edge-case payload formats."""
+    service = EbusService()
+    # Default timestamp check (rounded to full hour)
+    metrics_default_dt = service.extract_metrics({})
+    assert metrics_default_dt.zeitstempel.minute == 0
+    assert metrics_default_dt.zeitstempel.second == 0
+    assert metrics_default_dt.zeitstempel.microsecond == 0
+
+    # Partial Status01: only temp
+    payload_only_temp = {
+        "hmu": {
+            "Status01": {
+                "values": {
+                    "temp": 33.3,
+                }
+            }
+        }
+    }
+    m1 = service.extract_metrics(payload_only_temp)
+    assert m1.vorlauf_temp == Decimal("33.3")
+    assert m1.ruecklauf_temp is None
+
+    # Partial Status01: only temp_1
+    payload_only_temp1 = {
+        "hmu": {
+            "Status01": {
+                "values": {
+                    "temp_1": 27.5,
+                }
+            }
+        }
+    }
+    m2 = service.extract_metrics(payload_only_temp1)
+    assert m2.vorlauf_temp is None
+    assert m2.ruecklauf_temp == Decimal("27.5")
+
+    # Status01 direct dict without values wrapper
+    payload_direct_status = {
+        "hmu": {
+            "Status01": {
+                "temp": {"value": 31.0},
+                "temp_1": {"value": 26.0},
+            }
+        }
+    }
+    m3 = service.extract_metrics(payload_direct_status)
+    assert m3.vorlauf_temp == Decimal("31.0")
+    assert m3.ruecklauf_temp == Decimal("26.0")
+
+    # Status01 node is a non-dict
+    payload_invalid_status = {
+        "hmu": {
+            "Status01": "not-a-dict",
+        }
+    }
+    m4 = service.extract_metrics(payload_invalid_status)
+    assert m4.vorlauf_temp is None
+    assert m4.ruecklauf_temp is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_ebusd_data_http_status_error():
+    """Tests fetch_ebusd_data triggers raise_for_status on HTTP error status code and retries."""
+    service = EbusService()
+    url = "http://192.168.2.125:58888/data"
+    err_response = httpx.Response(500, request=httpx.Request("GET", url))
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = err_response
+        data = await service.fetch_ebusd_data(url, max_retries=2, retry_delay=0.01)
+        assert data is None
+        assert mock_get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_ebusd_data_max_retries_zero():
+    """Tests fetch_ebusd_data with max_retries=0 directly returns None."""
+    service = EbusService()
+    data = await service.fetch_ebusd_data("http://192.168.2.125:58888/data", max_retries=0)
+    assert data is None
+
+
+def test_save_metrics_to_db_update_preserves_unmodified_fields(db_session: Session):
+    """Tests that updating an existing record only overwrites fields that are not None in the update."""
+    service = EbusService()
+    dt = datetime.datetime(2026, 9, 27, 10, 0, 0)
+    initial_metrics = EbusMetrics(
+        zeitstempel=dt,
+        aussentemperatur=Decimal("12.00"),
+        vorlauf_temp=Decimal("30.00"),
+        ruecklauf_temp=Decimal("25.00"),
+        ertrag_gesamt_kwh=Decimal("1000.00"),
+        strom_gesamt_kwh=Decimal("250.00"),
+        ertrag_heizen_kwh=Decimal("800.00"),
+        strom_heizen_kwh=Decimal("200.00"),
+        ertrag_warmwasser_kwh=Decimal("200.00"),
+        strom_warmwasser_kwh=Decimal("50.00"),
+        cop_aktuell=Decimal("4.00"),
+    )
+    service.save_metrics_to_db(initial_metrics, db_session)
+
+    # Now update with only cop_aktuell and aussentemperatur provided; all others None
+    partial_update = EbusMetrics(
+        zeitstempel=dt,
+        aussentemperatur=Decimal("13.50"),
+        cop_aktuell=Decimal("4.20"),
+    )
+    updated = service.save_metrics_to_db(partial_update, db_session)
+
+    assert updated.aussentemperatur == Decimal("13.50")
+    assert updated.cop_aktuell == Decimal("4.20")
+    # Preserved fields
+    assert updated.vorlauf_temp == Decimal("30.00")
+    assert updated.ruecklauf_temp == Decimal("25.00")
+    assert updated.ertrag_gesamt_kwh == Decimal("1000.00")
+    assert updated.strom_gesamt_kwh == Decimal("250.00")
+    assert updated.ertrag_heizen_kwh == Decimal("800.00")
+    assert updated.strom_heizen_kwh == Decimal("200.00")
+    assert updated.ertrag_warmwasser_kwh == Decimal("200.00")
+    assert updated.strom_warmwasser_kwh == Decimal("50.00")
+
+
+@pytest.mark.asyncio
+async def test_poll_and_save_empty_session_generator():
+    """Tests poll_and_save returns None if get_db_session yields nothing."""
+    service = EbusService()
+
+    def empty_session_gen(schema: str = "verbrauch"):
+        return
+        yield
+
+    with patch.object(service, "fetch_ebusd_data", new_callable=AsyncMock) as mock_fetch, \
+         patch("data_recorder.services.ebus_service.get_db_session", side_effect=empty_session_gen):
+        mock_fetch.return_value = SAMPLE_AROTHERM_PAYLOAD
+        result = await service.poll_and_save(session=None)
+        assert result is None
+
+
+@pytest.mark.asyncio
+async def test_poll_and_save_default_timestamp(db_session: Session):
+    """Tests poll_and_save with default timestamp=None rounds to the current hour."""
+    service = EbusService()
+
+    with patch.object(service, "fetch_ebusd_data", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = SAMPLE_AROTHERM_PAYLOAD
+        saved = await service.poll_and_save(session=db_session, timestamp=None)
+        assert saved is not None
+        assert saved.zeitstempel.minute == 0
+        assert saved.zeitstempel.second == 0
+        assert saved.zeitstempel.microsecond == 0
+
