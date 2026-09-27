@@ -49,7 +49,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1
 
 # Create volume mount directories with appuser ownership
-RUN mkdir -p /app/logs /app/data/uploads && \
+RUN mkdir -p /app/logs /app/data/uploads /app/data/failed_uploads && \
     chown -R appuser:appuser /app
 
 # Switch to non-root user
