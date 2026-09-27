@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     DB_NAME_VERBRAUCH: str = "verbrauch"
     DB_NAME_WERTPAPIERE: str = "wertpapiere"
     DB_NAME_HIBISCUS: str = "hibiscus"
+    HIBISCUS_ACCOUNT_FILTERS: str = ""
 
     # External Integration Settings
     EBUSD_URL: str = "http://192.168.2.125:58888/data"
@@ -43,9 +44,7 @@ class Settings(BaseSettings):
     # Heating Oil Scraper Settings (PLZ 90579, 2500L)
     HEIZOEL_PLZ: str = "90579"
     HEIZOEL_MENGE_LITER: int = 2500
-    HEIZOEL_PROVIDER_URL: str = (
-        "https://www.esyoil.com/heizoelpreise/heizoel-bestellung"
-    )
+    HEIZOEL_PROVIDER_URL: str = "https://www.esyoil.com/heizoelpreise/heizoel-bestellung"
     HEIZOEL_SCRAPER_TIMEOUT: float = 15.0
     HEIZOEL_SCRAPER_USER_AGENT: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

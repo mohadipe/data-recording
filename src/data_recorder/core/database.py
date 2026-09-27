@@ -27,6 +27,8 @@ def _on_sqlite_connect(dbapi_connection: Any, connection_record: Any) -> None:
             cursor.execute("ATTACH DATABASE ':memory:' AS verbrauch")
         with contextlib.suppress(sqlite3.Error):
             cursor.execute("ATTACH DATABASE ':memory:' AS wertpapiere")
+        with contextlib.suppress(sqlite3.Error):
+            cursor.execute("ATTACH DATABASE ':memory:' AS hibiscus")
         cursor.close()
 
 

@@ -3,10 +3,7 @@ from pathlib import Path
 
 def test_migration_file_exists_and_content():
     migration_file = (
-        Path(__file__).parent.parent
-        / "database"
-        / "migrations"
-        / "01_init_new_tables.sql"
+        Path(__file__).parent.parent / "database" / "migrations" / "01_init_new_tables.sql"
     )
     assert migration_file.exists(), f"Migration file {migration_file} does not exist"
 
@@ -27,3 +24,17 @@ def test_migration_file_exists_and_content():
     assert "add column if not exists ticker_yahoo" in content.lower()
     assert "add column if not exists typ" in content.lower()
     assert "add column if not exists aktiv" in content.lower()
+
+
+def test_migration_02_hibiscus_import_log_exists_and_content():
+    migration_file = (
+        Path(__file__).parent.parent / "database" / "migrations" / "02_hibiscus_import_log.sql"
+    )
+    assert migration_file.exists(), f"Migration file {migration_file} does not exist"
+
+    content = migration_file.read_text(encoding="utf-8")
+    assert len(content) > 0
+    assert "hibiscus_import_log" in content.lower()
+    assert "hibiscus_umsatz_id" in content.lower()
+    assert "create table if not exists" in content.lower()
+    assert "uq_hibiscus_import_umsatz_id" in content.lower()

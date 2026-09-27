@@ -5,6 +5,7 @@ from typing import Any, ClassVar
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     ForeignKey,
     Integer,
     Numeric,
@@ -127,3 +128,41 @@ class WknErtragDatum(Base):
 
     def __repr__(self) -> str:
         return f"<WknErtragDatum(id={self.id}, wkn_id={self.wkn_id}, datum={self.datum}, betrag={self.betrag}, typ='{self.typ}')>"
+
+
+class HibiscusImportLog(Base):
+    """Tracking-Tabelle für bereits verarbeitete Hibiscus-Umsätze zur Sicherstellung der Idempotenz."""
+
+    __tablename__ = "hibiscus_import_log"
+    __table_args__: ClassVar[tuple[Any, ...]] = (
+        UniqueConstraint("hibiscus_umsatz_id", name="uq_hibiscus_import_umsatz_id"),
+        {"schema": "wertpapiere"},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    hibiscus_umsatz_id: Mapped[int] = mapped_column(
+        Integer, nullable=False, unique=True, index=True
+    )
+    wkn_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("wertpapiere.etf.id"),
+        nullable=True,
+        index=True,
+    )
+    typ: Mapped[str] = mapped_column(String(50), nullable=False)
+    datum: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+    betrag: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    verwendungszweck: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    imported_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    etf: Mapped[Etf | None] = relationship("Etf")
+
+    def __repr__(self) -> str:
+        return (
+            f"<HibiscusImportLog(id={self.id}, umsatz_id={self.hibiscus_umsatz_id}, "
+            f"wkn_id={self.wkn_id}, typ='{self.typ}', datum={self.datum}, betrag={self.betrag})>"
+        )

@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from data_recorder.core.database import Base
 from data_recorder.models.wertpapiere import (
     Etf,
+    HibiscusImportLog,
     WknErtragDatum,
     WknInvestDatum,
     WknWertDatum,
@@ -21,9 +22,7 @@ def db_session():
         "sqlite:///:memory:",
         poolclass=StaticPool,
         connect_args={"check_same_thread": False},
-        execution_options={
-            "schema_translate_map": {"verbrauch": None, "wertpapiere": None}
-        },
+        execution_options={"schema_translate_map": {"verbrauch": None, "wertpapiere": None}},
     )
     Base.metadata.create_all(bind=engine)
     with Session(engine) as session:
@@ -165,3 +164,37 @@ def test_wkn_ertrag_datum_crud_and_relationship(db_session: Session):
     db_session.delete(saved)
     db_session.commit()
     assert db_session.get(WknErtragDatum, saved.id) is None
+
+
+def test_hibiscus_import_log_crud(db_session: Session):
+    etf = Etf(wkn="A1T8FV", name="iShares Core MSCI World")
+    db_session.add(etf)
+    db_session.commit()
+
+    log_entry = HibiscusImportLog(
+        hibiscus_umsatz_id=5001,
+        wkn_id=etf.id,
+        typ="SPARPLAN",
+        datum=datetime.date(2025, 4, 1),
+        betrag=Decimal("150.00"),
+        verwendungszweck="Wertpapier-Sparplan WKN: A1T8FV",
+    )
+    db_session.add(log_entry)
+    db_session.commit()
+
+    saved = db_session.execute(
+        select(HibiscusImportLog).where(HibiscusImportLog.hibiscus_umsatz_id == 5001)
+    ).scalar_one()
+    assert saved.id is not None
+    assert saved.hibiscus_umsatz_id == 5001
+    assert saved.wkn_id == etf.id
+    assert saved.typ == "SPARPLAN"
+    assert saved.datum == datetime.date(2025, 4, 1)
+    assert saved.betrag == Decimal("150.00")
+    assert saved.verwendungszweck == "Wertpapier-Sparplan WKN: A1T8FV"
+    assert repr(saved).startswith("<HibiscusImportLog")
+
+    # Delete
+    db_session.delete(saved)
+    db_session.commit()
+    assert db_session.get(HibiscusImportLog, saved.id) is None
