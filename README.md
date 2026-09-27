@@ -162,6 +162,14 @@ chmod -R 775 logs data/uploads
   # Zuletzt erfassten Wärmepumpen-Stundenwert abrufen:
   curl http://192.168.2.125:9015/api/ebus/latest
   ```
+* **Wertpapiere & Tradegate-Kursabfrage (Yahoo Finance):**
+  ```bash
+  # Alle aktiven Wertpapiere abfragen und idempotent in wertpapiere.wkn_wert_datum speichern:
+  curl -X POST http://192.168.2.125:9015/api/finance/update-prices
+
+  # Aktuellste erfasste Kurse aller Wertpapiere abrufen:
+  curl http://192.168.2.125:9015/api/finance/latest
+  ```
 
 ---
 

@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from data_recorder.api.routes_ebus import router as ebus_router
+from data_recorder.api.routes_finance import router as finance_router
 from data_recorder.api.routes_health import router as health_router
 from data_recorder.api.routes_oil_price import router as oil_price_router
 from data_recorder.api.routes_wizard import router as wizard_router
@@ -44,6 +45,7 @@ app.include_router(health_router)
 app.include_router(ebus_router)
 app.include_router(oil_price_router)
 app.include_router(wizard_router)
+app.include_router(finance_router)
 
 
 # Mount static directory and PWA manifest
