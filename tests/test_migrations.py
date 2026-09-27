@@ -19,11 +19,11 @@ def test_migration_file_exists_and_content():
     # Ensure ALTER TABLE for etf column extensions are present
     assert "alter table" in content.lower()
     assert "etf" in content.lower()
-    assert "add column if not exists isin" in content.lower()
-    assert "add column if not exists name" in content.lower()
-    assert "add column if not exists ticker_yahoo" in content.lower()
-    assert "add column if not exists typ" in content.lower()
-    assert "add column if not exists aktiv" in content.lower()
+    assert "isin varchar(12)" in content.lower()
+    assert "name varchar(255)" in content.lower()
+    assert "ticker_yahoo varchar(50)" in content.lower()
+    assert "typ varchar(50)" in content.lower()
+    assert "aktiv boolean" in content.lower()
 
 
 def test_migration_02_hibiscus_import_log_exists_and_content():
