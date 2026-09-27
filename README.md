@@ -154,6 +154,14 @@ chmod -R 775 logs data/uploads
   ```json
   {"status":"ok","version":"0.1.0","app_name":"data-recorder"}
   ```
+* **Manueller eBUS-Trigger & Messwert-Abfrage:**
+  ```bash
+  # eBUS aroTHERM sofort abfragen und stündlich idempotent in MySQL speichern:
+  curl -X POST http://192.168.2.125:9015/api/ebus/poll-now
+
+  # Zuletzt erfassten Wärmepumpen-Stundenwert abrufen:
+  curl http://192.168.2.125:9015/api/ebus/latest
+  ```
 
 ---
 

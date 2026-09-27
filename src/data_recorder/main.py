@@ -1,11 +1,14 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
 
+from data_recorder.api.routes_ebus import router as ebus_router
 from data_recorder.api.routes_health import router as health_router
 from data_recorder.core.config import get_settings
 from data_recorder.core.logging import setup_logging
+from data_recorder.core.scheduler import shutdown_scheduler, start_scheduler
 
 
 @asynccontextmanager
@@ -13,7 +16,12 @@ async def lifespan(app: FastAPI):
     """Application lifespan context for startup and shutdown events."""
     settings = get_settings()
     setup_logging(settings.LOG_LEVEL)
+    if settings.ENVIRONMENT != "test":
+        start_scheduler()
     yield
+    if settings.ENVIRONMENT != "test":
+        shutdown_scheduler()
+        await asyncio.sleep(0)
 
 
 settings = get_settings()
@@ -28,6 +36,7 @@ app = FastAPI(
 
 # Include API routers
 app.include_router(health_router)
+app.include_router(ebus_router)
 
 
 if __name__ == "__main__":

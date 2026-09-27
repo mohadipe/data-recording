@@ -114,6 +114,10 @@ class WaermepumpeStundenwert(Base):
         return f"<WaermepumpeStundenwert(id={self.id}, zeitstempel={self.zeitstempel}, cop={self.cop_aktuell})>"
 
 
+# Alias for plural table naming
+WaermepumpeStundenwerte = WaermepumpeStundenwert
+
+
 class HeizoelPreis(Base):
     """Regionale Heizölpreis-Historie zur Kosten-Vergleichsberechnung im Schema verbrauch."""
 
