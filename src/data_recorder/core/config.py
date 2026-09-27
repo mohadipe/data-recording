@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     PAPERLESS_TAG: str = "Zaehlerbeleg"
     PAPERLESS_DOCUMENT_TYPE: str = "Zaehlerbeleg"
     FAILED_UPLOADS_DIR: str = "data/failed_uploads"
+    SHARED_UPLOADS_DIR: str = "data/shared_uploads"
 
     # Heating Oil Scraper Settings (PLZ 90579, 2500L)
     HEIZOEL_PLZ: str = "90579"

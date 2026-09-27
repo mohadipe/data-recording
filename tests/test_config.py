@@ -50,6 +50,7 @@ def test_get_settings_cached():
 def test_paperless_and_upload_defaults():
     settings = Settings()
     assert settings.FAILED_UPLOADS_DIR == "data/failed_uploads"
+    assert settings.SHARED_UPLOADS_DIR == "data/shared_uploads"
     assert settings.PAPERLESS_TAG == "Zaehlerbeleg"
     assert settings.PAPERLESS_DOCUMENT_TYPE == "Zaehlerbeleg"
 

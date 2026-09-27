@@ -40,6 +40,13 @@
         <!-- SCHRITT 1: Zähler & Foto auswählen         -->
         <!-- ========================================== -->
         <section id="step-1" class="step-transition flex-1 flex flex-col space-y-5">
+            {% if error_message %}
+            <div id="wizard-error-banner" class="p-3.5 rounded-xl bg-rose-950/70 border border-rose-500/50 text-rose-200 text-xs flex items-center space-x-2.5">
+                <span class="text-base leading-none">⚠️</span>
+                <span>{{ error_message }}</span>
+            </div>
+            {% endif %}
+
             <div>
                 <h2 class="text-lg font-bold text-slate-100 mb-1">Schritt 1: Zähler & Foto</h2>
                 <p class="text-sm text-slate-400">Wähle den abzulesenden Zähler und nimm ein Belegfoto auf.</p>
@@ -83,10 +90,10 @@
                             data-meter-id="{{ meter.id }}">
                             <div class="flex items-center justify-between mb-1">
                                 <span class="text-xs font-bold px-2 py-0.5 rounded-full 
-                                    {% if meter.typ == 'STROM' %}bg-amber-500/20 text-amber-300 border border-amber-500/30
-                                    {% elif meter.typ == 'WASSER' %}bg-sky-500/20 text-sky-300 border border-sky-500/30
-                                    {% elif meter.typ == 'WAERME' %}bg-rose-500/20 text-rose-300 border border-rose-500/30
-                                    {% else %}bg-purple-500/20 text-purple-300 border border-purple-500/30{% endif %}">
+                                     {% if meter.typ == 'STROM' %}bg-amber-500/20 text-amber-300 border border-amber-500/30
+                                     {% elif meter.typ == 'WASSER' %}bg-sky-500/20 text-sky-300 border border-sky-500/30
+                                     {% elif meter.typ == 'WAERME' %}bg-rose-500/20 text-rose-300 border border-rose-500/30
+                                     {% else %}bg-purple-500/20 text-purple-300 border border-purple-500/30{% endif %}">
                                     {{ meter.typ }}
                                 </span>
                             </div>
@@ -105,37 +112,61 @@
 
             <!-- Kamera & Foto Upload Bereich -->
             <div class="space-y-2 pt-2">
-                <label class="block text-sm font-medium text-slate-300">
-                    Zählerfoto / Beleg
-                </label>
+                <div class="flex items-center justify-between">
+                    <label class="block text-sm font-medium text-slate-300">
+                        Zählerfoto / Beleg
+                    </label>
+                    <span class="text-[11px] text-slate-400">Optional</span>
+                </div>
                 
-                <input type="file" id="foto-input" name="foto" accept="image/*" capture="environment" class="hidden">
+                <!-- Versteckte Inputs für Kamera, Galerie und Shared Photo -->
+                <input type="file" id="foto-camera-input" name="foto" accept="image/*" capture="environment" class="hidden">
+                <input type="file" id="foto-gallery-input" accept="image/*,image/jpeg,image/png,image/heic,image/heif,image/webp" class="hidden">
+                <input type="hidden" id="shared-photo-id" name="shared_photo_id" value="{{ shared_photo.id if shared_photo else '' }}">
                 
-                <div id="photo-dropzone" 
-                    onclick="document.getElementById('foto-input').click();"
-                    class="border-2 border-dashed border-slate-700 hover:border-brand-500 hover:bg-slate-800/50 rounded-2xl p-6 text-center cursor-pointer transition active:scale-[0.99] flex flex-col items-center justify-center space-y-3 bg-slate-800/20">
-                    <div class="w-14 h-14 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-2xl shadow-inner border border-brand-500/30">
-                        📷
+                <!-- Auswahlbereich (Kamera vs. Galerie) -->
+                <div id="photo-selection-area" class="{% if shared_photo %}hidden {% endif %}space-y-2">
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <button type="button" id="btn-camera"
+                            onclick="document.getElementById('foto-camera-input').click();"
+                            class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-800 hover:border-brand-500 active:scale-95 transition space-y-1.5">
+                            <div class="w-10 h-10 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-xl shadow-inner border border-brand-500/30">
+                                📷
+                            </div>
+                            <span class="text-xs font-bold text-slate-100">Foto aufnehmen</span>
+                            <span class="text-[10px] text-slate-400">Kamera starten</span>
+                        </button>
+                        <button type="button" id="btn-gallery"
+                            onclick="document.getElementById('foto-gallery-input').click();"
+                            class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-800 hover:border-sky-500 active:scale-95 transition space-y-1.5">
+                            <div class="w-10 h-10 rounded-full bg-sky-600/20 text-sky-400 flex items-center justify-center text-xl shadow-inner border border-sky-500/30">
+                                🖼️
+                            </div>
+                            <span class="text-xs font-bold text-slate-100">Aus Galerie</span>
+                            <span class="text-[10px] text-slate-400">Fotoalbum / Datei</span>
+                        </button>
                     </div>
-                    <div>
-                        <span class="text-sm font-semibold text-slate-200 block">Foto aufnehmen oder auswählen</span>
-                        <span class="text-xs text-slate-400 block mt-0.5">Automatisches Auslesen des EXIF-Datums</span>
+                    <div class="text-center">
+                        <span class="text-[11px] text-slate-400">Automatisches Auslesen des EXIF-Datums • JPEG, PNG, HEIC & PWA Share</span>
                     </div>
-                    <span class="text-xs px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                        Kamera starten
-                    </span>
                 </div>
 
                 <!-- Foto Vorschau Card -->
-                <div id="photo-preview-card" class="hidden bg-slate-800/80 border border-slate-700 rounded-xl p-3 flex items-center space-x-3">
-                    <img id="photo-preview-img" src="" alt="Zählerfoto" class="w-14 h-14 object-cover rounded-lg border border-slate-600">
+                <div id="photo-preview-card" class="{% if not shared_photo %}hidden {% endif %}bg-slate-800/80 border border-slate-700 rounded-xl p-3 flex items-center space-x-3">
+                    <img id="photo-preview-img" src="{{ shared_photo.preview_url if shared_photo else '' }}" alt="Zählerfoto" class="w-14 h-14 object-cover rounded-lg border border-slate-600">
                     <div class="flex-1 min-w-0">
-                        <span id="photo-name" class="text-xs font-medium text-slate-200 block truncate">beleg.jpg</span>
+                        <span id="photo-name" class="text-xs font-medium text-slate-200 block truncate">{{ shared_photo.filename if shared_photo else 'beleg.jpg' }}</span>
                         <div id="exif-status-badge" class="flex items-center space-x-1 text-[11px] text-slate-400 mt-0.5">
-                            <span>Lese Metadaten...</span>
+                            {% if shared_photo and shared_photo.has_exif %}
+                                <span class="text-emerald-400 font-medium">✓ EXIF-Datum: {{ shared_photo.capture_date }}</span>
+                            {% elif shared_photo %}
+                                <span class="text-slate-400">Geteiltes Foto (ohne EXIF)</span>
+                            {% else %}
+                                <span>Lese Metadaten...</span>
+                            {% endif %}
                         </div>
                     </div>
-                    <button type="button" onclick="document.getElementById('foto-input').click();" class="text-xs text-brand-400 hover:text-brand-300 p-2">
+                    <button type="button" id="btn-change-photo" class="text-xs text-brand-400 hover:text-brand-300 p-2">
                         Ändern
                     </button>
                 </div>
@@ -308,17 +339,21 @@
         let selectedMeterData = null;
         let lastReadingVal = null;
         let nextZaehlerId = null;
+        let selectedFile = null;
 
         // Elements
         const form = document.getElementById("wizard-form");
         const selectZaehler = document.getElementById("zaehler_select");
         const quickCards = document.querySelectorAll(".meter-card");
-        const fotoInput = document.getElementById("foto-input");
-        const photoDropzone = document.getElementById("photo-dropzone");
+        const fotoCameraInput = document.getElementById("foto-camera-input");
+        const fotoGalleryInput = document.getElementById("foto-gallery-input");
+        const sharedPhotoIdInput = document.getElementById("shared-photo-id");
+        const photoSelectionArea = document.getElementById("photo-selection-area");
         const photoPreviewCard = document.getElementById("photo-preview-card");
         const photoPreviewImg = document.getElementById("photo-preview-img");
         const photoName = document.getElementById("photo-name");
         const exifStatusBadge = document.getElementById("exif-status-badge");
+        const btnChangePhoto = document.getElementById("btn-change-photo");
         const datumInput = document.getElementById("datum-input");
         const exifDateIndicator = document.getElementById("exif-date-indicator");
         const wertInput = document.getElementById("wert-input");
@@ -424,17 +459,18 @@
             onMeterSelected(selectZaehler.value);
         }
 
-        // Photo file changed & EXIF Extraction
-        fotoInput.addEventListener("change", async (e) => {
-            const file = e.target.files[0];
+        // Handle Photo selection (from Camera or Gallery)
+        function handlePhotoSelected(file) {
             if (!file) return;
+            selectedFile = file;
+            if (sharedPhotoIdInput) sharedPhotoIdInput.value = "";
 
-            // Thumbnail preview
             photoName.textContent = file.name;
             const reader = new FileReader();
             reader.onload = (evt) => {
                 photoPreviewImg.src = evt.target.result;
                 photoPreviewCard.classList.remove("hidden");
+                if (photoSelectionArea) photoSelectionArea.classList.add("hidden");
             };
             reader.readAsDataURL(file);
 
@@ -443,29 +479,56 @@
             const formData = new FormData();
             formData.append("foto", file);
 
-            try {
-                const res = await fetch("/api/wizard/extract-date", {
-                    method: "POST",
-                    body: formData,
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.date) {
-                        datumInput.value = data.date;
-                        if (data.has_exif) {
-                            exifStatusBadge.innerHTML = `<span class="text-emerald-400 font-medium">✓ EXIF-Datum: ${data.date}</span>`;
-                            exifDateIndicator.classList.remove("hidden");
-                        } else {
-                            exifStatusBadge.innerHTML = `<span class="text-slate-400">Kein EXIF – Datum auf heute gesetzt</span>`;
-                            exifDateIndicator.classList.add("hidden");
-                        }
+            fetch("/api/wizard/extract-date", {
+                method: "POST",
+                body: formData,
+            })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data && data.date) {
+                    datumInput.value = data.date;
+                    if (data.has_exif) {
+                        exifStatusBadge.innerHTML = `<span class="text-emerald-400 font-medium">✓ EXIF-Datum: ${data.date}</span>`;
+                        exifDateIndicator.classList.remove("hidden");
+                    } else {
+                        exifStatusBadge.innerHTML = `<span class="text-slate-400">Kein EXIF – Datum auf heute gesetzt</span>`;
+                        exifDateIndicator.classList.add("hidden");
                     }
                 }
-            } catch (err) {
+            })
+            .catch(err => {
                 console.warn("EXIF extraction error:", err);
                 exifStatusBadge.innerHTML = `<span class="text-slate-400">Konnte EXIF nicht lesen</span>`;
-            }
-        });
+            });
+        }
+
+        if (fotoCameraInput) {
+            fotoCameraInput.addEventListener("change", (e) => handlePhotoSelected(e.target.files[0]));
+        }
+        if (fotoGalleryInput) {
+            fotoGalleryInput.addEventListener("change", (e) => handlePhotoSelected(e.target.files[0]));
+        }
+        if (btnChangePhoto) {
+            btnChangePhoto.addEventListener("click", () => {
+                selectedFile = null;
+                if (fotoCameraInput) fotoCameraInput.value = "";
+                if (fotoGalleryInput) fotoGalleryInput.value = "";
+                if (sharedPhotoIdInput) sharedPhotoIdInput.value = "";
+                photoPreviewCard.classList.add("hidden");
+                if (photoSelectionArea) photoSelectionArea.classList.remove("hidden");
+                exifDateIndicator.classList.add("hidden");
+            });
+        }
+
+        // Initialize shared photo state if provided from server
+        {% if shared_photo %}
+            {% if shared_photo.capture_date %}
+                datumInput.value = "{{ shared_photo.capture_date }}";
+                {% if shared_photo.has_exif %}
+                    exifDateIndicator.classList.remove("hidden");
+                {% endif %}
+            {% endif %}
+        {% endif %}
 
         // Recalculate Live Difference in Step 2
         function recalculateDiff() {
@@ -544,8 +607,10 @@
             if (selectedMeterData?.unit) {
                 formData.append("einheit", selectedMeterData.unit);
             }
-            if (fotoInput.files[0]) {
-                formData.append("foto", fotoInput.files[0]);
+            if (selectedFile) {
+                formData.append("foto", selectedFile);
+            } else if (sharedPhotoIdInput && sharedPhotoIdInput.value) {
+                formData.append("shared_photo_id", sharedPhotoIdInput.value);
             }
 
             try {
@@ -604,7 +669,12 @@
         // Reset wizard
         btnResetWizard.addEventListener("click", () => {
             form.reset();
+            selectedFile = null;
+            if (fotoCameraInput) fotoCameraInput.value = "";
+            if (fotoGalleryInput) fotoGalleryInput.value = "";
+            if (sharedPhotoIdInput) sharedPhotoIdInput.value = "";
             photoPreviewCard.classList.add("hidden");
+            if (photoSelectionArea) photoSelectionArea.classList.remove("hidden");
             exifDateIndicator.classList.add("hidden");
             selectZaehler.value = "";
             goToStep(1);

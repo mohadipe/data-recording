@@ -103,3 +103,27 @@ def test_wizard_preselected_meter(client: TestClient, test_db_session: Session):
     assert response.status_code == 200
     html = response.text
     assert "WASSER-SPECIAL" in html
+
+
+def test_wizard_gallery_and_camera_buttons(client: TestClient, test_db_session: Session):
+    """Verify wizard provides separate touch buttons for camera and gallery."""
+    response = client.get("/wizard")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "Foto aufnehmen" in html
+    assert "Aus Galerie" in html
+    assert "foto-camera-input" in html
+    assert "foto-gallery-input" in html
+    assert "capture=\"environment\"" in html
+    assert "image/heic" in html or "heic" in html
+
+
+def test_wizard_error_banner(client: TestClient, test_db_session: Session):
+    """Verify error query parameter renders friendly German alert banner."""
+    response = client.get("/wizard?error=invalid_image")
+    assert response.status_code == 200
+    html = response.text
+    assert "wizard-error-banner" in html
+    assert "Das geteilte Bildformat wird nicht unterstützt" in html
+
