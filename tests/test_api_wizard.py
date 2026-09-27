@@ -1,12 +1,13 @@
 """Tests for Meter Wizard API endpoints (zaehler listing, latest reading, and EXIF extraction)."""
 
 import datetime
-from decimal import Decimal
 import io
+from decimal import Decimal
+
 import piexif
-from PIL import Image
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool

@@ -1,13 +1,14 @@
 """End-to-end integration tests for the mobile meter reading wizard."""
 
 import datetime
-from decimal import Decimal
 import io
+from decimal import Decimal
 from pathlib import Path
+
 import piexif
-from PIL import Image
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool

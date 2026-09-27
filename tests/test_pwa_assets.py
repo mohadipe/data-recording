@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+
 from fastapi.testclient import TestClient
 from PIL import Image
 
