@@ -81,9 +81,11 @@ docker compose down
 
 ---
 
-## 🖥️ Bereitstellung auf der Synology DiskStation (Container Manager)
+## 🖥️ Bereitstellung auf der Synology DiskStation (nas-infra & Container Manager)
 
-Der Dienst ist für den dauerhaften Betrieb auf der **Synology DiskStation (DSM 7.2+)** via **Container Manager** optimiert.
+> 💡 **Empfohlen:** Die Bereitstellung erfolgt über das zentrale Orchestrierungs-Repository [`nas-infra`](https://github.com/mohadipe/nas-infra) im **Stack 03 (Apps)** via `./nas.sh up apps`.
+> Die vollständige Schritt-für-Schritt-Anleitung inklusive Image-Build, DDL-Migrationen, Ticker-Seeding und Verifikation findest du in:
+> 👉 **[Zur ausführlichen NAS-Deployment-Anleitung (nas-infra)](docs/nas_deployment_anleitung.md)**
 
 ### Voraussetzungen auf der Synology
 * **Container Manager** Paket über das DSM Paketzentrum installiert.
