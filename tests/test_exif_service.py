@@ -4,7 +4,6 @@ from pathlib import Path
 
 import piexif
 import pillow_heif
-import pytest
 from PIL import Image
 
 from data_recorder.services.exif_service import (

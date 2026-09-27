@@ -1,0 +1,614 @@
+{% extends "base.html" %}
+
+{% block title %}Zählerablesung – Foto-Wizard{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col" id="wizard-app">
+    <!-- 3-Schritte Fortschrittsanzeige -->
+    <nav aria-label="Fortschritt" class="mb-6">
+        <ol class="flex items-center justify-between w-full text-xs font-medium text-slate-400">
+            <!-- Schritt 1 -->
+            <li class="flex items-center flex-1" id="step-nav-1">
+                <span class="flex items-center justify-center w-7 h-7 rounded-full bg-brand-600 text-white font-bold ring-4 ring-brand-600/20 mr-2 text-xs" id="step-badge-1">
+                    1
+                </span>
+                <span class="text-slate-100 font-semibold truncate" id="step-title-1">Zähler & Foto</span>
+                <div class="flex-1 h-0.5 bg-slate-800 mx-2" aria-hidden="true"></div>
+            </li>
+            <!-- Schritt 2 -->
+            <li class="flex items-center flex-1" id="step-nav-2">
+                <span class="flex items-center justify-center w-7 h-7 rounded-full bg-slate-800 text-slate-400 border border-slate-700 mr-2 text-xs" id="step-badge-2">
+                    2
+                </span>
+                <span class="truncate" id="step-title-2">Stand & Prüfung</span>
+                <div class="flex-1 h-0.5 bg-slate-800 mx-2" aria-hidden="true"></div>
+            </li>
+            <!-- Schritt 3 -->
+            <li class="flex items-center" id="step-nav-3">
+                <span class="flex items-center justify-center w-7 h-7 rounded-full bg-slate-800 text-slate-400 border border-slate-700 mr-2 text-xs" id="step-badge-3">
+                    3
+                </span>
+                <span class="truncate" id="step-title-3">Bestätigt</span>
+            </li>
+        </ol>
+    </nav>
+
+    <!-- FORMULAR -->
+    <form id="wizard-form" class="flex-1 flex flex-col justify-between" enctype="multipart/form-data">
+        
+        <!-- ========================================== -->
+        <!-- SCHRITT 1: Zähler & Foto auswählen         -->
+        <!-- ========================================== -->
+        <section id="step-1" class="step-transition flex-1 flex flex-col space-y-5">
+            <div>
+                <h2 class="text-lg font-bold text-slate-100 mb-1">Schritt 1: Zähler & Foto</h2>
+                <p class="text-sm text-slate-400">Wähle den abzulesenden Zähler und nimm ein Belegfoto auf.</p>
+            </div>
+
+            <!-- Zähler Auswahl Dropdown & Schnellwahl -->
+            <div class="space-y-2">
+                <label for="zaehler_select" class="block text-sm font-medium text-slate-300">
+                    Aktiver Zähler <span class="text-brand-400">*</span>
+                </label>
+                <div class="relative">
+                    <select id="zaehler_select" name="zaehler_id" required
+                        class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3.5 text-base focus:ring-2 focus:ring-brand-500 focus:border-brand-500 appearance-none shadow-sm">
+                        <option value="" disabled {% if not selected_zaehler_id %}selected{% endif %}>Bitte Zähler auswählen...</option>
+                        {% for meter in meters %}
+                            <option value="{{ meter.id }}" 
+                                {% if selected_zaehler_id == meter.id %}selected{% endif %}
+                                data-unit="{{ meter.einheit }}"
+                                data-typ="{{ meter.typ }}"
+                                data-nr="{{ meter.geraete_nr }}"
+                                data-last-val="{{ meter.last_wert if meter.last_wert is not none else '' }}"
+                                data-last-date="{{ meter.last_datum if meter.last_datum is not none else '' }}"
+                                data-formatted="{{ meter.formatted_reading }}">
+                                {{ meter.typ }} – {{ meter.geraete_nr }} ({{ meter.einheit }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+                        ▼
+                    </div>
+                </div>
+            </div>
+
+            <!-- Zähler Schnellwahl Karten (Touch-freundlich) -->
+            <div class="space-y-1.5">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Schnellauswahl</span>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3" id="meter-quick-cards">
+                    {% for meter in meters %}
+                        <button type="button" 
+                            class="meter-card text-left p-3 rounded-xl border border-slate-800 bg-slate-800/40 hover:bg-slate-800 active:scale-95 transition flex flex-col justify-between"
+                            data-meter-id="{{ meter.id }}">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-bold px-2 py-0.5 rounded-full 
+                                    {% if meter.typ == 'STROM' %}bg-amber-500/20 text-amber-300 border border-amber-500/30
+                                    {% elif meter.typ == 'WASSER' %}bg-sky-500/20 text-sky-300 border border-sky-500/30
+                                    {% elif meter.typ == 'WAERME' %}bg-rose-500/20 text-rose-300 border border-rose-500/30
+                                    {% else %}bg-purple-500/20 text-purple-300 border border-purple-500/30{% endif %}">
+                                    {{ meter.typ }}
+                                </span>
+                            </div>
+                            <span class="text-xs text-slate-200 font-mono truncate font-medium">{{ meter.geraete_nr }}</span>
+                            <span class="text-[10px] text-slate-400 mt-1 truncate">
+                                {% if meter.last_wert is not none %}
+                                    {{ meter.last_wert }} {{ meter.einheit }}
+                                {% else %}
+                                    Neu
+                                {% endif %}
+                            </span>
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Kamera & Foto Upload Bereich -->
+            <div class="space-y-2 pt-2">
+                <label class="block text-sm font-medium text-slate-300">
+                    Zählerfoto / Beleg
+                </label>
+                
+                <input type="file" id="foto-input" name="foto" accept="image/*" capture="environment" class="hidden">
+                
+                <div id="photo-dropzone" 
+                    onclick="document.getElementById('foto-input').click();"
+                    class="border-2 border-dashed border-slate-700 hover:border-brand-500 hover:bg-slate-800/50 rounded-2xl p-6 text-center cursor-pointer transition active:scale-[0.99] flex flex-col items-center justify-center space-y-3 bg-slate-800/20">
+                    <div class="w-14 h-14 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-2xl shadow-inner border border-brand-500/30">
+                        📷
+                    </div>
+                    <div>
+                        <span class="text-sm font-semibold text-slate-200 block">Foto aufnehmen oder auswählen</span>
+                        <span class="text-xs text-slate-400 block mt-0.5">Automatisches Auslesen des EXIF-Datums</span>
+                    </div>
+                    <span class="text-xs px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                        Kamera starten
+                    </span>
+                </div>
+
+                <!-- Foto Vorschau Card -->
+                <div id="photo-preview-card" class="hidden bg-slate-800/80 border border-slate-700 rounded-xl p-3 flex items-center space-x-3">
+                    <img id="photo-preview-img" src="" alt="Zählerfoto" class="w-14 h-14 object-cover rounded-lg border border-slate-600">
+                    <div class="flex-1 min-w-0">
+                        <span id="photo-name" class="text-xs font-medium text-slate-200 block truncate">beleg.jpg</span>
+                        <div id="exif-status-badge" class="flex items-center space-x-1 text-[11px] text-slate-400 mt-0.5">
+                            <span>Lese Metadaten...</span>
+                        </div>
+                    </div>
+                    <button type="button" onclick="document.getElementById('foto-input').click();" class="text-xs text-brand-400 hover:text-brand-300 p-2">
+                        Ändern
+                    </button>
+                </div>
+            </div>
+
+            <!-- Button Weiter -->
+            <div class="pt-4">
+                <button type="button" id="btn-to-step-2" 
+                    class="w-full bg-brand-600 hover:bg-brand-500 active:scale-95 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-brand-600/30 transition flex items-center justify-center space-x-2 text-base">
+                    <span>Weiter zu Schritt 2</span>
+                    <span>→</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SCHRITT 2: Datum & Plausibilitäts-Check     -->
+        <!-- ========================================== -->
+        <section id="step-2" class="step-transition hidden flex-1 flex flex-col space-y-5">
+            <div>
+                <h2 class="text-lg font-bold text-slate-100 mb-1">Schritt 2: Datum & Zählerstand</h2>
+                <p class="text-sm text-slate-400">Prüfe das Ablesedatum und trage den neuen Zählerstand ein.</p>
+            </div>
+
+            <!-- Ausgewählter Zähler Zusammenfassung -->
+            <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 flex items-center justify-between">
+                <div>
+                    <span id="step2-meter-typ" class="text-xs font-bold text-brand-400 uppercase tracking-wide">STROM</span>
+                    <h3 id="step2-meter-nr" class="text-sm font-semibold text-slate-100 font-mono">1 EMH00 0988 6538</h3>
+                </div>
+                <button type="button" id="btn-back-to-step-1" class="text-xs text-slate-400 hover:text-slate-200 underline">
+                    Zähler wechseln
+                </button>
+            </div>
+
+            <!-- Ablesedatum (EXIF oder Manuell) -->
+            <div class="space-y-1.5">
+                <div class="flex items-center justify-between">
+                    <label for="datum-input" class="text-sm font-medium text-slate-300">
+                        Ablesedatum <span class="text-brand-400">*</span>
+                    </label>
+                    <span id="exif-date-indicator" class="hidden text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                        ✓ aus Foto-EXIF
+                    </span>
+                </div>
+                <input type="date" id="datum-input" name="datum" required value="{{ today_date }}"
+                    class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-brand-500 focus:border-brand-500 shadow-sm">
+            </div>
+
+            <!-- Vorheriger Stand Anzeige -->
+            <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-3.5">
+                <span class="text-xs font-semibold text-slate-400 block mb-1">Historie</span>
+                <p id="previous-reading-text" class="text-sm text-slate-200 font-medium">
+                    Kein vorheriger Stand vorhanden
+                </p>
+            </div>
+
+            <!-- Neuer Zählerstand Eingabe -->
+            <div class="space-y-1.5">
+                <label for="wert-input" class="text-sm font-medium text-slate-300 flex items-center justify-between">
+                    <span>Neuer Zählerstand <span class="text-brand-400">*</span></span>
+                    <span id="current-unit-badge" class="text-xs font-bold text-slate-400">kWh</span>
+                </label>
+                <div class="relative">
+                    <input type="number" step="any" inputmode="decimal" id="wert-input" name="wert" required placeholder="0.00"
+                        class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3.5 text-xl font-bold font-mono focus:ring-2 focus:ring-brand-500 focus:border-brand-500 shadow-sm">
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-sm font-semibold text-slate-400" id="input-unit-label">
+                        kWh
+                    </div>
+                </div>
+            </div>
+
+            <!-- Plausibilitäts-Check Live-Berechnung Card -->
+            <div id="diff-card" class="rounded-xl p-4 border transition">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-400">Berechneter Verbrauch:</span>
+                    <span id="diff-value-badge" class="text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300">
+                        ± 0
+                    </span>
+                </div>
+                <!-- Warnung bei negativem Wert -->
+                <div id="diff-warning-box" class="hidden mt-3 p-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-200 text-xs flex items-start space-x-2">
+                    <span class="text-base leading-none">⚠️</span>
+                    <div>
+                        <strong class="font-bold">Achtung: Negativer Verbrauch!</strong>
+                        <p class="mt-0.5 text-rose-300" id="diff-warning-message">
+                            Der neue Stand ist kleiner als der vorherige Messwert. Bitte prüfe, ob die Ziffern korrekt abgelesen wurden.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buttons Navigation -->
+            <div class="pt-4 flex space-x-3">
+                <button type="button" id="btn-back-1" 
+                    class="w-1/3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 font-semibold py-3.5 px-3 rounded-xl border border-slate-700 transition text-sm">
+                    ← Zurück
+                </button>
+                <button type="submit" id="btn-submit"
+                    class="w-2/3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center justify-center space-x-2 text-base">
+                    <span id="btn-submit-text">Stand speichern</span>
+                    <span id="btn-submit-spinner" class="hidden animate-spin">⏳</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SCHRITT 3: Bestätigung & Nächster Zähler    -->
+        <!-- ========================================== -->
+        <section id="step-3" class="step-transition hidden flex-1 flex flex-col justify-between py-4 space-y-6">
+            <div class="text-center space-y-4 pt-4">
+                <div class="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center text-3xl mx-auto shadow-inner">
+                    ✓
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-slate-100">Erfolgreich gespeichert!</h2>
+                    <p class="text-sm text-slate-400 mt-1" id="success-subtitle">Der Zählerstand wurde in der Datenbank hinterlegt.</p>
+                </div>
+
+                <!-- Zusammenfassung Card -->
+                <div class="bg-slate-800/60 border border-slate-700/80 rounded-2xl p-4 text-left space-y-2.5 max-w-sm mx-auto">
+                    <div class="flex justify-between text-xs py-1 border-b border-slate-800">
+                        <span class="text-slate-400">Zähler:</span>
+                        <span class="font-semibold text-slate-200" id="summary-meter">STROM (1 EMH00)</span>
+                    </div>
+                    <div class="flex justify-between text-xs py-1 border-b border-slate-800">
+                        <span class="text-slate-400">Ablesedatum:</span>
+                        <span class="font-semibold text-slate-200" id="summary-date">01.08.2026</span>
+                    </div>
+                    <div class="flex justify-between text-xs py-1 border-b border-slate-800">
+                        <span class="text-slate-400">Neuer Zählerstand:</span>
+                        <span class="font-mono font-bold text-brand-400" id="summary-value">12.580,00 kWh</span>
+                    </div>
+                    <div class="flex justify-between text-xs py-1">
+                        <span class="text-slate-400">Verbrauch:</span>
+                        <span class="font-mono font-bold text-emerald-400" id="summary-consumption">+130,00 kWh</span>
+                    </div>
+                </div>
+
+                <!-- Paperless Info Badge -->
+                <div id="summary-paperless-info" class="p-3 bg-slate-800/40 border border-slate-700/60 rounded-xl text-xs text-slate-300 max-w-sm mx-auto flex items-center space-x-2">
+                    <span class="text-lg">📄</span>
+                    <span id="summary-paperless-text">Belegfoto wird im Hintergrund an Paperless-ngx archiviert.</span>
+                </div>
+            </div>
+
+            <!-- Aktionen -->
+            <div class="space-y-3 pt-4">
+                <a id="btn-next-meter" href="/wizard" 
+                    class="block w-full bg-brand-600 hover:bg-brand-500 active:scale-95 text-white font-bold py-3.5 px-4 rounded-xl text-center shadow-lg shadow-brand-600/30 transition text-base">
+                    Nächsten Zähler erfassen →
+                </a>
+                <button type="button" id="btn-reset-wizard" 
+                    class="block w-full bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 font-semibold py-3 px-4 rounded-xl text-center border border-slate-700 transition text-sm">
+                    Weiteren Stand erfassen
+                </button>
+            </div>
+        </section>
+
+    </form>
+</div>
+
+<!-- ========================================== -->
+<!-- CLIENT-SIDE LOGIK & INTERAKTIVITÄT         -->
+<!-- ========================================== -->
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        // State
+        let currentStep = 1;
+        let selectedMeterData = null;
+        let lastReadingVal = null;
+        let nextZaehlerId = null;
+
+        // Elements
+        const form = document.getElementById("wizard-form");
+        const selectZaehler = document.getElementById("zaehler_select");
+        const quickCards = document.querySelectorAll(".meter-card");
+        const fotoInput = document.getElementById("foto-input");
+        const photoDropzone = document.getElementById("photo-dropzone");
+        const photoPreviewCard = document.getElementById("photo-preview-card");
+        const photoPreviewImg = document.getElementById("photo-preview-img");
+        const photoName = document.getElementById("photo-name");
+        const exifStatusBadge = document.getElementById("exif-status-badge");
+        const datumInput = document.getElementById("datum-input");
+        const exifDateIndicator = document.getElementById("exif-date-indicator");
+        const wertInput = document.getElementById("wert-input");
+        const currentUnitBadge = document.getElementById("current-unit-badge");
+        const inputUnitLabel = document.getElementById("input-unit-label");
+        const previousReadingText = document.getElementById("previous-reading-text");
+        const diffCard = document.getElementById("diff-card");
+        const diffValueBadge = document.getElementById("diff-value-badge");
+        const diffWarningBox = document.getElementById("diff-warning-box");
+        const diffWarningMessage = document.getElementById("diff-warning-message");
+        const btnToStep2 = document.getElementById("btn-to-step-2");
+        const btnBackToStep1 = document.getElementById("btn-back-to-step-1");
+        const btnBack1 = document.getElementById("btn-back-1");
+        const btnSubmit = document.getElementById("btn-submit");
+        const btnSubmitText = document.getElementById("btn-submit-text");
+        const btnSubmitSpinner = document.getElementById("btn-submit-spinner");
+        const btnNextMeter = document.getElementById("btn-next-meter");
+        const btnResetWizard = document.getElementById("btn-reset-wizard");
+
+        // Helper: Number formatter
+        function formatNumber(num) {
+            return Number(num).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Switch Steps
+        function goToStep(step) {
+            currentStep = step;
+            document.getElementById("step-1").classList.toggle("hidden", step !== 1);
+            document.getElementById("step-2").classList.toggle("hidden", step !== 2);
+            document.getElementById("step-3").classList.toggle("hidden", step !== 3);
+
+            // Update Nav indicators
+            [1, 2, 3].forEach(s => {
+                const badge = document.getElementById(`step-badge-${s}`);
+                const title = document.getElementById(`step-title-${s}`);
+                if (s === step) {
+                    badge.className = "flex items-center justify-center w-7 h-7 rounded-full bg-brand-600 text-white font-bold ring-4 ring-brand-600/20 mr-2 text-xs";
+                    title.className = "text-slate-100 font-semibold truncate";
+                } else if (s < step) {
+                    badge.className = "flex items-center justify-center w-7 h-7 rounded-full bg-emerald-600 text-white font-bold mr-2 text-xs";
+                    badge.textContent = "✓";
+                    title.className = "text-slate-400 font-medium truncate";
+                } else {
+                    badge.className = "flex items-center justify-center w-7 h-7 rounded-full bg-slate-800 text-slate-400 border border-slate-700 mr-2 text-xs";
+                    badge.textContent = `${s}`;
+                    title.className = "text-slate-500 truncate";
+                }
+            });
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // On Meter selection changed
+        function onMeterSelected(meterId) {
+            const opt = selectZaehler.querySelector(`option[value="${meterId}"]`);
+            if (!opt) return;
+
+            selectZaehler.value = meterId;
+            const unit = opt.dataset.unit || "kWh";
+            const typ = opt.dataset.typ || "ZÄHLER";
+            const nr = opt.dataset.nr || "";
+            const lastValStr = opt.dataset.lastVal;
+            const lastDate = opt.dataset.lastDate || "";
+            const formatted = opt.dataset.formatted || "Kein Stand erfasst";
+
+            lastReadingVal = lastValStr !== "" ? parseFloat(lastValStr) : null;
+            selectedMeterData = { id: meterId, typ, nr, unit, lastVal: lastReadingVal, lastDate };
+
+            // Update UI in Step 2
+            document.getElementById("step2-meter-typ").textContent = typ;
+            document.getElementById("step2-meter-nr").textContent = nr;
+            currentUnitBadge.textContent = unit;
+            inputUnitLabel.textContent = unit;
+            previousReadingText.textContent = formatted;
+
+            // Highlight quick cards
+            quickCards.forEach(card => {
+                const isSelected = card.dataset.meterId === meterId.toString();
+                card.classList.toggle("ring-2", isSelected);
+                card.classList.toggle("ring-brand-500", isSelected);
+                card.classList.toggle("bg-brand-950/40", isSelected);
+            });
+
+            recalculateDiff();
+        }
+
+        // Quick cards click
+        quickCards.forEach(card => {
+            card.addEventListener("click", () => {
+                const meterId = card.dataset.meterId;
+                onMeterSelected(meterId);
+            });
+        });
+
+        selectZaehler.addEventListener("change", (e) => {
+            if (e.target.value) {
+                onMeterSelected(e.target.value);
+            }
+        });
+
+        // Initialize preselected meter if present
+        if (selectZaehler.value) {
+            onMeterSelected(selectZaehler.value);
+        }
+
+        // Photo file changed & EXIF Extraction
+        fotoInput.addEventListener("change", async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Thumbnail preview
+            photoName.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                photoPreviewImg.src = evt.target.result;
+                photoPreviewCard.classList.remove("hidden");
+            };
+            reader.readAsDataURL(file);
+
+            // AJAX EXIF Date extraction
+            exifStatusBadge.innerHTML = `<span class="animate-pulse">⏳ Lese Aufnahmezeitpunkt...</span>`;
+            const formData = new FormData();
+            formData.append("foto", file);
+
+            try {
+                const res = await fetch("/api/wizard/extract-date", {
+                    method: "POST",
+                    body: formData,
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.date) {
+                        datumInput.value = data.date;
+                        if (data.has_exif) {
+                            exifStatusBadge.innerHTML = `<span class="text-emerald-400 font-medium">✓ EXIF-Datum: ${data.date}</span>`;
+                            exifDateIndicator.classList.remove("hidden");
+                        } else {
+                            exifStatusBadge.innerHTML = `<span class="text-slate-400">Kein EXIF – Datum auf heute gesetzt</span>`;
+                            exifDateIndicator.classList.add("hidden");
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn("EXIF extraction error:", err);
+                exifStatusBadge.innerHTML = `<span class="text-slate-400">Konnte EXIF nicht lesen</span>`;
+            }
+        });
+
+        // Recalculate Live Difference in Step 2
+        function recalculateDiff() {
+            const rawVal = wertInput.value.trim().replace(',', '.');
+            const unit = selectedMeterData?.unit || "kWh";
+
+            if (rawVal === "" || isNaN(rawVal)) {
+                diffValueBadge.textContent = `± 0 ${unit}`;
+                diffValueBadge.className = "text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400";
+                diffWarningBox.classList.add("hidden");
+                diffCard.className = "rounded-xl p-4 border border-slate-700 bg-slate-800/30 transition";
+                return;
+            }
+
+            const currentVal = parseFloat(rawVal);
+            if (lastReadingVal === null) {
+                diffValueBadge.textContent = `Erster Stand: ${formatNumber(currentVal)} ${unit}`;
+                diffValueBadge.className = "text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-brand-500/20 text-brand-300 border border-brand-500/30";
+                diffWarningBox.classList.add("hidden");
+                diffCard.className = "rounded-xl p-4 border border-brand-500/30 bg-brand-950/20 transition";
+                return;
+            }
+
+            const diff = currentVal - lastReadingVal;
+            const diffFormatted = (diff >= 0 ? "+" : "") + formatNumber(diff) + " " + unit;
+            diffValueBadge.textContent = diffFormatted;
+
+            if (diff >= 0) {
+                // Plausible positive consumption
+                diffValueBadge.className = "text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                diffWarningBox.classList.add("hidden");
+                diffCard.className = "rounded-xl p-4 border border-emerald-500/30 bg-emerald-950/20 transition";
+            } else {
+                // Warning: negative consumption
+                diffValueBadge.className = "text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30";
+                diffWarningMessage.textContent = `Der neue Stand (${formatNumber(currentVal)} ${unit}) ist geringer als der Vorwert (${formatNumber(lastReadingVal)} ${unit}). Differenz: ${diffFormatted}`;
+                diffWarningBox.classList.remove("hidden");
+                diffCard.className = "rounded-xl p-4 border border-rose-500/40 bg-rose-950/30 transition";
+            }
+        }
+
+        wertInput.addEventListener("input", recalculateDiff);
+
+        // Step Navigation Buttons
+        btnToStep2.addEventListener("click", () => {
+            if (!selectZaehler.value) {
+                alert("Bitte wähle zuerst einen Zähler aus.");
+                selectZaehler.focus();
+                return;
+            }
+            onMeterSelected(selectZaehler.value);
+            goToStep(2);
+            setTimeout(() => wertInput.focus(), 300);
+        });
+
+        btnBackToStep1.addEventListener("click", () => goToStep(1));
+        btnBack1.addEventListener("click", () => goToStep(1));
+
+        // Submit Form via AJAX Fetch
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            if (!selectZaehler.value || !datumInput.value || !wertInput.value) {
+                alert("Bitte alle Pflichtfelder ausfüllen.");
+                return;
+            }
+
+            btnSubmit.disabled = true;
+            btnSubmitText.textContent = "Speichere...";
+            btnSubmitSpinner.classList.remove("hidden");
+
+            const formData = new FormData();
+            formData.append("zaehler_id", selectZaehler.value);
+            formData.append("datum", datumInput.value);
+            formData.append("wert", wertInput.value.trim().replace(',', '.'));
+            if (selectedMeterData?.unit) {
+                formData.append("einheit", selectedMeterData.unit);
+            }
+            if (fotoInput.files[0]) {
+                formData.append("foto", fotoInput.files[0]);
+            }
+
+            try {
+                const response = await fetch("/wizard/submit", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.detail || `Serverfehler: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                // Fill Step 3 Summary
+                document.getElementById("summary-meter").textContent = `${result.typ} (${result.geraete_nr})`;
+                document.getElementById("summary-date").textContent = result.datum;
+                document.getElementById("summary-value").textContent = `${formatNumber(result.wert)} ${result.einheit}`;
+                
+                if (result.verbrauch !== null) {
+                    const sign = result.verbrauch >= 0 ? "+" : "";
+                    document.getElementById("summary-consumption").textContent = `${sign}${formatNumber(result.verbrauch)} ${result.einheit}`;
+                } else {
+                    document.getElementById("summary-consumption").textContent = "Erstablesung";
+                }
+
+                if (result.foto_uploaded) {
+                    document.getElementById("summary-paperless-text").textContent = "Belegfoto wurde übergeben und wird nach Paperless-ngx archiviert.";
+                    document.getElementById("summary-paperless-info").classList.remove("hidden");
+                } else {
+                    document.getElementById("summary-paperless-info").classList.add("hidden");
+                }
+
+                // Link to next meter
+                nextZaehlerId = result.next_zaehler_id;
+                if (nextZaehlerId) {
+                    btnNextMeter.href = `/wizard?zaehler_id=${nextZaehlerId}`;
+                    btnNextMeter.textContent = "Nächsten Zähler erfassen →";
+                } else {
+                    btnNextMeter.href = "/wizard";
+                    btnNextMeter.textContent = "Zurück zur Übersicht";
+                }
+
+                goToStep(3);
+
+            } catch (err) {
+                alert(`Fehler beim Speichern: ${err.message}`);
+            } finally {
+                btnSubmit.disabled = false;
+                btnSubmitText.textContent = "Stand speichern";
+                btnSubmitSpinner.classList.add("hidden");
+            }
+        });
+
+        // Reset wizard
+        btnResetWizard.addEventListener("click", () => {
+            form.reset();
+            photoPreviewCard.classList.add("hidden");
+            exifDateIndicator.classList.add("hidden");
+            selectZaehler.value = "";
+            goToStep(1);
+        });
+    });
+</script>
+{% endblock %}
