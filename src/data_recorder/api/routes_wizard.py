@@ -16,10 +16,11 @@ from fastapi import (
     Form,
     HTTPException,
     Request,
+    Response,
     UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -27,6 +28,7 @@ from sqlalchemy.orm import Session
 from data_recorder.core.database import get_db_session
 from data_recorder.models.verbrauch import Messwert, Zaehler
 from data_recorder.services.exif_service import extract_capture_datetime
+from data_recorder.services.shared_photo_service import SharedPhotoService
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,8 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 async def get_wizard_page(
     request: Request,
     zaehler_id: int | None = None,
+    shared_photo_id: str | None = None,
+    error: str | None = None,
     session: Session = Depends(get_db_session),
 ) -> HTMLResponse:
     """Renders the mobile 3-step meter reading wizard."""
@@ -82,6 +86,30 @@ async def get_wizard_page(
             }
         )
 
+    # Process shared photo prefill if passed
+    shared_photo_data: dict[str, Any] | None = None
+    if shared_photo_id:
+        shared_service = SharedPhotoService()
+        meta = shared_service.get_shared_photo_meta(shared_photo_id)
+        if meta:
+            shared_photo_data = {
+                "id": meta.id,
+                "filename": meta.original_filename,
+                "capture_date": meta.capture_date,
+                "has_exif": meta.has_exif,
+                "is_heic": meta.is_heic,
+                "preview_url": f"/api/wizard/shared-photo/{meta.id}?preview=1",
+            }
+
+    # Map error query param to user-friendly German message
+    error_message: str | None = None
+    if error == "empty_file":
+        error_message = "Die geteilte Datei war leer. Bitte wähle ein gültiges Zählerfoto."
+    elif error == "invalid_image":
+        error_message = "Das geteilte Bildformat wird nicht unterstützt oder die Datei ist beschädigt."
+    elif error:
+        error_message = f"Fehler beim Übernehmen des Fotos ({error})."
+
     return templates.TemplateResponse(
         request=request,
         name="wizard.html",
@@ -90,6 +118,8 @@ async def get_wizard_page(
             "meters": meters_data,
             "selected_zaehler_id": zaehler_id,
             "today_date": today.isoformat(),
+            "shared_photo": shared_photo_data,
+            "error_message": error_message,
         },
     )
 
@@ -220,6 +250,99 @@ async def extract_date_from_photo(
     }
 
 
+@router.post("/wizard/share", summary="Receive shared photo from PWA Web Share Target")
+async def receive_shared_photo(
+    foto: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+) -> RedirectResponse:
+    """Receives photos shared into the PWA and redirects to the wizard with prefilled metadata."""
+    shared_service = SharedPhotoService()
+    # Trigger background cleanup of old shared uploads
+    background_tasks.add_task(shared_service.cleanup_old_photos, 24)
+
+    if not foto.filename and not foto.content_type:
+        return RedirectResponse(
+            url="/wizard?error=empty_file",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    try:
+        content = await foto.read()
+        if not content:
+            return RedirectResponse(
+                url="/wizard?error=empty_file",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+        meta = shared_service.save_shared_photo(
+            file_content=content,
+            filename=foto.filename,
+            content_type=foto.content_type,
+        )
+        return RedirectResponse(
+            url=f"/wizard?shared_photo_id={meta.id}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    except ValueError as exc:
+        logger.warning("Shared photo validation failed: %s", exc)
+        return RedirectResponse(
+            url="/wizard?error=invalid_image",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    except Exception as exc:
+        logger.error("Unexpected error processing shared photo: %s", exc, exc_info=True)
+        return RedirectResponse(
+            url="/wizard?error=server_error",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+
+@router.get("/api/wizard/shared-photo/{photo_id}", summary="Get shared photo bytes (or JPEG preview)")
+async def get_shared_photo(
+    photo_id: str,
+    preview: bool = False,
+) -> Response:
+    """Returns the raw or JPEG-preview bytes of a temporarily shared photo."""
+    shared_service = SharedPhotoService()
+    res = shared_service.get_shared_photo_bytes(photo_id, prefer_preview=preview)
+    if not res:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Geteiltes Foto mit ID {photo_id} nicht gefunden",
+        )
+    raw_bytes, media_type = res
+    return Response(
+        content=raw_bytes,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@router.get("/api/wizard/shared-photo/{photo_id}/meta", summary="Get shared photo metadata")
+async def get_shared_photo_metadata(
+    photo_id: str,
+) -> dict[str, Any]:
+    """Returns metadata (EXIF capture date, format, filename) for a shared photo."""
+    shared_service = SharedPhotoService()
+    meta = shared_service.get_shared_photo_meta(photo_id)
+    if not meta:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Geteiltes Foto mit ID {photo_id} nicht gefunden",
+        )
+    return {
+        "id": meta.id,
+        "filename": meta.original_filename,
+        "content_type": meta.content_type,
+        "file_size": meta.file_size_bytes,
+        "capture_date": meta.capture_date,
+        "capture_datetime": meta.capture_datetime,
+        "has_exif": meta.has_exif,
+        "is_heic": meta.is_heic,
+        "preview_url": f"/api/wizard/shared-photo/{meta.id}?preview=1",
+    }
+
+
 @router.post("/wizard/submit", summary="Submit meter reading and upload receipt")
 @router.post("/api/wizard/submit", summary="Submit meter reading (API alias)")
 async def submit_reading(
@@ -228,6 +351,7 @@ async def submit_reading(
     wert: Decimal = Form(...),
     einheit: str | None = Form(None),
     foto: UploadFile | None = File(None),
+    shared_photo_id: str | None = Form(None),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     session: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
@@ -324,6 +448,31 @@ async def submit_reading(
                 created=created_dt,
                 mime_type=mime_type,
             )
+    elif shared_photo_id and shared_photo_id.strip():
+        shared_service = SharedPhotoService()
+        shared_id = shared_photo_id.strip()
+        shared_meta = shared_service.get_shared_photo_meta(shared_id)
+        shared_bytes_info = shared_service.get_shared_photo_bytes(shared_id)
+        if shared_meta and shared_bytes_info:
+            raw_bytes, mime = shared_bytes_info
+            foto_uploaded = True
+            from data_recorder.services.paperless_service import PaperlessService
+
+            paperless = PaperlessService()
+            title = f"Zählerstand {zaehler.typ} {zaehler.geraete_nr} - {reading_date.strftime('%d.%m.%Y')}"
+            created_dt = datetime.datetime.combine(reading_date, datetime.datetime.min.time())
+            filename = shared_meta.original_filename or f"zaehler_{zaehler_id}_{reading_date.isoformat()}.jpg"
+
+            background_tasks.add_task(
+                paperless.upload_document,
+                file_content=raw_bytes,
+                filename=filename,
+                title=title,
+                created=created_dt,
+                mime_type=mime,
+            )
+            # Clean up buffered shared photo file after submitting
+            background_tasks.add_task(shared_service.delete_shared_photo, shared_id)
 
     return {
         "success": True,

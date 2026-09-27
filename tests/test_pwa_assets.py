@@ -61,6 +61,32 @@ def test_manifest_endpoint_http():
     data = response.json()
     assert data["display"] == "standalone"
     assert data["short_name"] == "Zähler"
+    assert "share_target" in data
+    st = data["share_target"]
+    assert st["action"] == "/wizard/share"
+    assert st["method"] == "POST"
+    assert st["enctype"] == "multipart/form-data"
+    assert "files" in st["params"]
+    assert any(f["name"] == "foto" for f in st["params"]["files"])
+
+
+def test_manifest_share_target_structure():
+    """Verify share_target has valid schema and image mime-types."""
+    manifest_path = Path("src/data_recorder/static/manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert "share_target" in manifest
+    st = manifest["share_target"]
+    assert st["action"] == "/wizard/share"
+    assert st["method"].upper() == "POST"
+    assert st["enctype"] == "multipart/form-data"
+    files = st.get("params", {}).get("files", [])
+    assert len(files) >= 1
+    foto_param = next((f for f in files if f.get("name") == "foto"), None)
+    assert foto_param is not None
+    accepts = foto_param.get("accept", [])
+    assert "image/*" in accepts
+    assert any("heic" in acc for acc in accepts)
+
 
 
 def test_static_icon_endpoint_http():
