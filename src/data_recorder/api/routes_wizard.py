@@ -7,7 +7,7 @@ from decimal import Decimal
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -144,3 +144,126 @@ async def extract_date_from_photo(
         "datetime": captured_dt.isoformat(),
         "has_exif": has_exif,
     }
+
+
+@router.post("/wizard/submit", summary="Submit meter reading and upload receipt")
+@router.post("/api/wizard/submit", summary="Submit meter reading (API alias)")
+async def submit_reading(
+    zaehler_id: int = Form(...),
+    datum: str = Form(...),
+    wert: Decimal = Form(...),
+    einheit: str | None = Form(None),
+    foto: UploadFile | None = File(None),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Saves a meter measurement to database and schedules receipt upload to Paperless-ngx."""
+    try:
+        reading_date = datetime.date.fromisoformat(datum.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ungültiges Datumsformat (erwartet: YYYY-MM-DD)",
+        )
+
+    zaehler = session.get(Zaehler, zaehler_id)
+    if not zaehler:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Zähler mit ID {zaehler_id} nicht gefunden",
+        )
+
+    # Determine unit
+    if einheit and einheit.strip():
+        selected_unit = einheit.strip().upper()
+    else:
+        prior_unit_stmt = (
+            select(Messwert)
+            .where(Messwert.zaehler_id == zaehler_id)
+            .order_by(desc(Messwert.datum), desc(Messwert.id))
+            .limit(1)
+        )
+        prior_unit_mw = session.scalars(prior_unit_stmt).first()
+        selected_unit = prior_unit_mw.einheit if prior_unit_mw else get_default_unit(zaehler.typ)
+
+    # Plausibility check: find most recent reading before the new date
+    prior_reading_stmt = (
+        select(Messwert)
+        .where(Messwert.zaehler_id == zaehler_id, Messwert.datum < reading_date)
+        .order_by(desc(Messwert.datum), desc(Messwert.id))
+        .limit(1)
+    )
+    prior_reading = session.scalars(prior_reading_stmt).first()
+    verbrauch = (wert - prior_reading.wert) if prior_reading else None
+
+    # Idempotent DB insertion/update
+    existing_stmt = select(Messwert).where(
+        Messwert.zaehler_id == zaehler_id,
+        Messwert.datum == reading_date,
+    )
+    existing_mw = session.scalars(existing_stmt).first()
+
+    if existing_mw:
+        existing_mw.wert = wert
+        existing_mw.einheit = selected_unit
+        messwert = existing_mw
+    else:
+        messwert = Messwert(
+            zaehler_id=zaehler_id,
+            datum=reading_date,
+            wert=wert,
+            einheit=selected_unit,
+        )
+        session.add(messwert)
+
+    session.commit()
+    session.refresh(messwert)
+
+    # Find next active meter for convenient navigation
+    today = datetime.date.today()
+    next_zaehler_stmt = (
+        select(Zaehler)
+        .where(Zaehler.ausbau_dt >= today, Zaehler.id != zaehler_id)
+        .order_by(Zaehler.typ.asc(), Zaehler.id.asc())
+    )
+    next_zaehler = session.scalars(next_zaehler_stmt).first()
+
+    # Handle optional photo upload to Paperless-ngx asynchronously
+    foto_uploaded = False
+    if foto is not None and foto.filename:
+        foto_bytes = await foto.read()
+        if len(foto_bytes) > 0:
+            foto_uploaded = True
+            from data_recorder.services.paperless_service import PaperlessService
+
+            paperless = PaperlessService()
+            title = f"Zählerstand {zaehler.typ} {zaehler.geraete_nr} - {reading_date.strftime('%d.%m.%Y')}"
+            created_dt = datetime.datetime.combine(reading_date, datetime.datetime.min.time())
+            filename = foto.filename or f"zaehler_{zaehler_id}_{reading_date.isoformat()}.jpg"
+            mime_type = foto.content_type or "image/jpeg"
+
+            background_tasks.add_task(
+                paperless.upload_document,
+                file_content=foto_bytes,
+                filename=filename,
+                title=title,
+                created=created_dt,
+                mime_type=mime_type,
+            )
+
+    return {
+        "success": True,
+        "message": "Zählerstand erfolgreich gespeichert",
+        "messwert_id": messwert.id,
+        "zaehler_id": zaehler.id,
+        "geraete_nr": zaehler.geraete_nr,
+        "typ": zaehler.typ,
+        "datum": reading_date.isoformat(),
+        "wert": float(messwert.wert),
+        "einheit": selected_unit,
+        "vorheriger_wert": float(prior_reading.wert) if prior_reading else None,
+        "verbrauch": float(verbrauch) if verbrauch is not None else None,
+        "foto_uploaded": foto_uploaded,
+        "next_zaehler_id": next_zaehler.id if next_zaehler else None,
+    }
+

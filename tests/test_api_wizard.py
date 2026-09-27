@@ -7,7 +7,7 @@ import piexif
 from PIL import Image
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -191,3 +191,139 @@ def test_extract_date_without_exif_fallback(client: TestClient):
     assert data["success"] is True
     assert data["date"] == datetime.date.today().isoformat()
     assert data["has_exif"] is False
+
+
+def test_submit_reading_with_photo_success(
+    client: TestClient, test_db_session: Session, monkeypatch
+):
+    """Verify POST /wizard/submit creates Messwert and triggers Paperless upload."""
+    zaehler = Zaehler(
+        id=5,
+        geraete_nr="STROM-MAIN",
+        einbau_dt=datetime.date(2020, 1, 1),
+        ausbau_dt=datetime.date(2035, 1, 1),
+        typ="STROM",
+    )
+    prior = Messwert(
+        id=50,
+        zaehler_id=5,
+        datum=datetime.date(2026, 7, 1),
+        wert=Decimal("12000.00"),
+        einheit="KWH",
+    )
+    test_db_session.add_all([zaehler, prior])
+    test_db_session.commit()
+
+    upload_calls = []
+
+    async def fake_upload(*args, **kwargs):
+        upload_calls.append(kwargs)
+        from data_recorder.services.paperless_service import PaperlessUploadResult
+
+        return PaperlessUploadResult(success=True, task_uuid="task-123")
+
+    from data_recorder.services.paperless_service import PaperlessService
+
+    monkeypatch.setattr(PaperlessService, "upload_document", fake_upload)
+
+    jpeg_bytes = make_jpeg_with_exif("2026:08:01 12:00:00")
+    form_data = {
+        "zaehler_id": "5",
+        "datum": "2026-08-01",
+        "wert": "12150.75",
+        "einheit": "KWH",
+    }
+    files = {"foto": ("zaehler_foto.jpg", jpeg_bytes, "image/jpeg")}
+
+    response = client.post("/wizard/submit", data=form_data, files=files)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["zaehler_id"] == 5
+    assert data["wert"] == 12150.75
+    assert data["vorheriger_wert"] == 12000.00
+    assert data["verbrauch"] == 150.75
+    assert data["foto_uploaded"] is True
+
+    # Verify database persistence
+    saved = test_db_session.scalars(
+        select(Messwert).where(
+            Messwert.zaehler_id == 5, Messwert.datum == datetime.date(2026, 8, 1)
+        )
+    ).first()
+    assert saved is not None
+    assert saved.wert == Decimal("12150.75")
+    assert saved.einheit == "KWH"
+
+    # Verify Paperless upload was scheduled in background task
+    assert len(upload_calls) == 1
+    assert upload_calls[0]["filename"] == "zaehler_foto.jpg"
+    assert "STROM" in upload_calls[0]["title"]
+
+
+def test_submit_reading_without_photo(client: TestClient, test_db_session: Session):
+    """Verify POST /wizard/submit works without photo attachment."""
+    zaehler = Zaehler(
+        id=6,
+        geraete_nr="WASSER-01",
+        einbau_dt=datetime.date(2020, 1, 1),
+        ausbau_dt=datetime.date(2035, 1, 1),
+        typ="WASSER",
+    )
+    test_db_session.add(zaehler)
+    test_db_session.commit()
+
+    form_data = {
+        "zaehler_id": "6",
+        "datum": "2026-08-01",
+        "wert": "350.20",
+    }
+    response = client.post("/wizard/submit", data=form_data)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["zaehler_id"] == 6
+    assert data["wert"] == 350.2
+    assert data["einheit"] == "M3"
+    assert data["foto_uploaded"] is False
+
+
+def test_submit_reading_idempotent_update(client: TestClient, test_db_session: Session):
+    """Verify submitting reading for existing zaehler and date updates value instead of failing."""
+    zaehler = Zaehler(
+        id=7,
+        geraete_nr="STROM-IDEMP",
+        einbau_dt=datetime.date(2020, 1, 1),
+        ausbau_dt=datetime.date(2035, 1, 1),
+        typ="STROM",
+    )
+    existing = Messwert(
+        id=701,
+        zaehler_id=7,
+        datum=datetime.date(2026, 8, 1),
+        wert=Decimal("100.00"),
+        einheit="KWH",
+    )
+    test_db_session.add_all([zaehler, existing])
+    test_db_session.commit()
+
+    form_data = {
+        "zaehler_id": "7",
+        "datum": "2026-08-01",
+        "wert": "105.50",
+    }
+    response = client.post("/wizard/submit", data=form_data)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["wert"] == 105.50
+
+    # Ensure no duplicate row was created
+    all_rows = test_db_session.scalars(
+        select(Messwert).where(
+            Messwert.zaehler_id == 7, Messwert.datum == datetime.date(2026, 8, 1)
+        )
+    ).all()
+    assert len(all_rows) == 1
+    assert all_rows[0].wert == Decimal("105.50")
+
