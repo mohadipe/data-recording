@@ -1,11 +1,11 @@
 import logging
-from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from data_recorder.services.ebus_service import EbusService
 from data_recorder.services.oil_price_service import OilPriceService
+from data_recorder.services.stock_price_service import StockPriceService
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,29 @@ async def oil_price_weekly_poll_job() -> None:
         )
 
 
+async def stock_price_daily_poll_job() -> None:
+    """Täglicher Hintergrund-Job (Mo-Fr 22:30 Uhr) zur Abfrage und Speicherung der Tradegate-Schlusskurse."""
+    logger.info("Starte täglichen Tradegate/Yahoo-Finance Kursabfrage-Job...")
+    try:
+        service = StockPriceService()
+        results = await service.poll_and_save()
+        if results:
+            logger.info(
+                "Tradegate Kursabfrage-Job erfolgreich abgeschlossen: %d Kurse aktualisiert.",
+                len(results),
+            )
+        else:
+            logger.warning(
+                "Tradegate Kursabfrage-Job konnte keine Kurse aktualisieren (keine aktiven Wertpapiere oder Yahoo Finance nicht erreichbar)."
+            )
+    except Exception as exc:
+        logger.error(
+            "Unerwarteter Fehler im Tradegate Kursabfrage-Job: %s. Scheduler läuft ungestört weiter.",
+            exc,
+            exc_info=True,
+        )
+
+
 def init_scheduler() -> AsyncIOScheduler:
     """Initializes and configures the APScheduler instance with all scheduled jobs."""
     global _scheduler
@@ -92,8 +115,18 @@ def init_scheduler() -> AsyncIOScheduler:
             misfire_grace_time=3600,
         )
 
-    return _scheduler
+    # Register stock price daily job Monday to Friday at 22:30 (after Tradegate close)
+    if _scheduler.get_job("stock_price_daily_poll") is None:
+        _scheduler.add_job(
+            stock_price_daily_poll_job,
+            trigger=CronTrigger(day_of_week="mon-fri", hour=22, minute=30),
+            id="stock_price_daily_poll",
+            name="Tägliche Tradegate-Kursabfrage (Mo-Fr 22:30)",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
 
+    return _scheduler
 
 
 def get_scheduler() -> AsyncIOScheduler | None:
