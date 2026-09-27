@@ -5,9 +5,12 @@ from __future__ import annotations
 import datetime
 from decimal import Decimal
 import logging
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -18,6 +21,67 @@ from data_recorder.services.exif_service import extract_capture_datetime
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["wizard"])
+
+TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+@router.get("/", response_class=HTMLResponse, summary="Mobile meter reading wizard home")
+@router.get("/wizard", response_class=HTMLResponse, summary="Mobile meter reading wizard")
+async def get_wizard_page(
+    request: Request,
+    zaehler_id: int | None = None,
+    session: Session = Depends(get_db_session),
+) -> HTMLResponse:
+    """Renders the mobile 3-step meter reading wizard."""
+    today = datetime.date.today()
+    stmt = (
+        select(Zaehler)
+        .where(Zaehler.ausbau_dt >= today)
+        .order_by(Zaehler.typ.asc(), Zaehler.id.asc())
+    )
+    zaehler_list = session.scalars(stmt).all()
+
+    meters_data = []
+    for z in zaehler_list:
+        latest_reading_stmt = (
+            select(Messwert)
+            .where(Messwert.zaehler_id == z.id)
+            .order_by(desc(Messwert.datum), desc(Messwert.id))
+            .limit(1)
+        )
+        latest_mw = session.scalars(latest_reading_stmt).first()
+        unit = latest_mw.einheit if latest_mw else get_default_unit(z.typ)
+        last_val = float(latest_mw.wert) if latest_mw else None
+        last_date = latest_mw.datum.isoformat() if latest_mw else None
+
+        formatted_reading = (
+            f"Letzter Stand (vom {latest_mw.datum.strftime('%d.%m.%Y')}): {format_german_number(latest_mw.wert)} {unit}"
+            if latest_mw
+            else "Kein Stand erfasst"
+        )
+        meters_data.append(
+            {
+                "id": z.id,
+                "geraete_nr": z.geraete_nr,
+                "typ": z.typ,
+                "einheit": unit,
+                "last_wert": last_val,
+                "last_datum": last_date,
+                "formatted_reading": formatted_reading,
+            }
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="wizard.html",
+        context={
+            "request": request,
+            "meters": meters_data,
+            "selected_zaehler_id": zaehler_id,
+            "today_date": today.isoformat(),
+        },
+    )
 
 
 def get_default_unit(typ: str) -> str:
