@@ -71,3 +71,31 @@ def test_migration_04_superset_views_and_view_files():
     assert (views_dir / "04_view_portfolio_performance.sql").exists()
     assert (views_dir / "05_view_portfolio_uebersicht_aktuell.sql").exists()
 
+
+def test_migration_05_kurs_bestand_exists_and_content():
+    migration_file = (
+        Path(__file__).parent.parent / "database" / "migrations" / "05_wertpapiere_kurs_bestand.sql"
+    )
+    assert migration_file.exists(), f"Migration file {migration_file} does not exist"
+
+    content = migration_file.read_text(encoding="utf-8").lower()
+    assert len(content) > 0
+
+    # Ensure tables are created
+    assert "create table if not exists wertpapiere.wkn_kurs_datum" in content
+    assert "create table if not exists wertpapiere.wkn_bestand_datum" in content
+
+    # Check key columns and types
+    assert "kurs decimal(10, 4)" in content
+    assert "anteile decimal(12, 4)" in content
+    assert "fk_wkn_kurs_etf" in content
+    assert "fk_wkn_bestand_etf" in content
+    assert "uq_wkn_kurs_wkn_datum" in content
+    assert "uq_wkn_bestand_wkn_datum" in content
+
+    # Check data migration and cleanup statements
+    assert "insert ignore into wertpapiere.wkn_kurs_datum" in content
+    assert "delete from wertpapiere.wkn_wert_datum" in content
+    assert "2026-09-25" in content
+
+
