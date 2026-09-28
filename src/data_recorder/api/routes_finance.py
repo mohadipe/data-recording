@@ -73,7 +73,7 @@ class CreateHoldingRequest(BaseModel):
 
     wkn_id: int
     datum: datetime.date
-    anteile: Decimal = Field(gt=Decimal("0"), description="Anzahl der Anteile (> 0)")
+    anteile: Decimal = Field(ge=Decimal("0"), description="Anzahl der Anteile (>= 0)")
 
 
 class UpdatePricesResponse(BaseModel):
@@ -502,15 +502,19 @@ def format_number_de(val: float | Decimal | None, decimals: int = 4) -> str:
     """Formats numeric value with German separators and flexible decimal places."""
     if val is None:
         return "0,00"
-    raw = f"{float(val):.{decimals}f}"
+    val_float = float(val)
+    is_negative = val_float < 0
+    raw = f"{abs(val_float):.{decimals}f}"
     if "." in raw:
         int_str, dec_str = raw.split(".")
         dec_str = dec_str.rstrip("0")
         if len(dec_str) < 2:
             dec_str = dec_str.ljust(2, "0")
         int_formatted = f"{int(int_str):,}".replace(",", ".")
-        return f"{int_formatted},{dec_str}"
-    return f"{int(raw):,}".replace(",", ".") + ",00"
+        result = f"{int_formatted},{dec_str}"
+    else:
+        result = f"{int(raw):,}".replace(",", ".") + ",00"
+    return f"-{result}" if is_negative else result
 
 
 def format_date_de(d: datetime.date | datetime.datetime | str | None) -> str:

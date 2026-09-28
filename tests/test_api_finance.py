@@ -289,15 +289,17 @@ def test_holdings_crud_endpoints(client: TestClient, db_session: Session):
     assert h1["kurs_datum"] == "2026-09-25"
     assert h1["gesamtwert"] == 0.0
 
-    # 2. POST /api/finance/holdings with invalid inputs
-    # Validation error for negative/zero anteile
-    invalid_resp = client.post("/api/finance/holdings", json={"wkn_id": etf1.id, "datum": "2026-09-28", "anteile": 0})
+    # 2. POST /api/finance/holdings validation error for negative anteile
+    invalid_resp = client.post("/api/finance/holdings", json={"wkn_id": etf1.id, "datum": "2026-09-28", "anteile": -5.0})
     assert invalid_resp.status_code == 422
-    invalid_resp2 = client.post("/api/finance/holdings", json={"wkn_id": etf1.id, "datum": "2026-09-28", "anteile": -5.0})
-    assert invalid_resp2.status_code == 422
     # 404 for unknown wkn_id
     not_found_resp = client.post("/api/finance/holdings", json={"wkn_id": 9999, "datum": "2026-09-28", "anteile": 10.0})
     assert not_found_resp.status_code == 404
+
+    # Test complete sale with anteile = 0 is valid
+    zero_resp = client.post("/api/finance/holdings", json={"wkn_id": etf2.id, "datum": "2026-09-28", "anteile": 0})
+    assert zero_resp.status_code in (200, 201)
+    assert zero_resp.json()["anteile"] == 0.0
 
     # 3. POST /api/finance/holdings successfully creates holding
     create_resp = client.post(

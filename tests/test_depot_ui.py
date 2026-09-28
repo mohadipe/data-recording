@@ -228,3 +228,13 @@ def test_depot_empty_state(client: TestClient, db_session: Session):
     assert "Keine aktiven Wertpapiere" in html
     assert "Noch keine Bestandshistorie" in html
 
+
+def test_format_number_de_sign_handling():
+    """Verify format_number_de preserves negative sign on fractions between -1 and 0."""
+    from data_recorder.api.routes_finance import format_number_de
+    assert format_number_de(Decimal("-0.5"), decimals=2) == "-0,50"
+    assert format_number_de(Decimal("-0.05"), decimals=2) == "-0,05"
+    assert format_number_de(Decimal("0"), decimals=2) == "0,00"
+    assert format_number_de(Decimal("12.3456"), decimals=4) == "12,3456"
+
+

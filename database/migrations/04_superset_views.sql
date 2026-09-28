@@ -286,7 +286,7 @@ combined_data AS (
         rk.anteile,
         ROUND(rk.anteile * rk.kurs, 2) AS depotwert
     FROM raw_kurs rk
-    WHERE rk.anteile IS NOT NULL
+    WHERE rk.anteile IS NOT NULL AND rk.datum > '2026-07-16'
 ),
 perf_base AS (
     SELECT 
