@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from data_recorder.core.database import Base
-from data_recorder.models.wertpapiere import Etf, WknWertDatum
+from data_recorder.models.wertpapiere import Etf, WknKursDatum
 from data_recorder.services.stock_price_service import (
+    StockPriceResult,
     StockPriceService,
 )
 
@@ -158,7 +159,7 @@ async def test_fetch_closing_price_async_wrapper():
 
 
 def test_save_stock_price_insert_new(db_session: Session):
-    """Tests inserting a new price record in wkn_wert_datum."""
+    """Tests inserting a new price record in wkn_kurs_datum."""
     etf = Etf(wkn="A0RPWH", name="MSCI World", ticker_yahoo="EUNL.TG", aktiv=True)
     db_session.add(etf)
     db_session.commit()
@@ -167,23 +168,24 @@ def test_save_stock_price_insert_new(db_session: Session):
     record = service.save_stock_price(
         wkn_id=etf.id,
         datum=datetime.date(2026, 9, 25),
-        wert=Decimal("101.50"),
+        kurs=Decimal("101.50"),
         session=db_session,
     )
 
+    assert isinstance(record, WknKursDatum)
     assert record.id is not None
     assert record.wkn_id == etf.id
     assert record.datum == datetime.date(2026, 9, 25)
-    assert record.wert == Decimal("101.50")
+    assert record.kurs == Decimal("101.50")
 
     # Verify directly from DB
     saved = db_session.execute(
-        select(WknWertDatum).where(
-            WknWertDatum.wkn_id == etf.id,
-            WknWertDatum.datum == datetime.date(2026, 9, 25),
+        select(WknKursDatum).where(
+            WknKursDatum.wkn_id == etf.id,
+            WknKursDatum.datum == datetime.date(2026, 9, 25),
         )
     ).scalar_one()
-    assert saved.wert == Decimal("101.50")
+    assert saved.kurs == Decimal("101.50")
 
 
 def test_save_stock_price_idempotent_update(db_session: Session):
@@ -197,28 +199,30 @@ def test_save_stock_price_idempotent_update(db_session: Session):
     rec1 = service.save_stock_price(
         wkn_id=etf.id,
         datum=datetime.date(2026, 9, 25),
-        wert=Decimal("101.50"),
+        kurs=Decimal("101.50"),
         session=db_session,
     )
-    assert rec1.wert == Decimal("101.50")
+    assert isinstance(rec1, WknKursDatum)
+    assert rec1.kurs == Decimal("101.50")
 
     # Second save on same date: 102.80
     rec2 = service.save_stock_price(
         wkn_id=etf.id,
         datum=datetime.date(2026, 9, 25),
-        wert=Decimal("102.80"),
+        kurs=Decimal("102.80"),
         session=db_session,
     )
 
+    assert isinstance(rec2, WknKursDatum)
     assert rec2.id == rec1.id
-    assert rec2.wert == Decimal("102.80")
+    assert rec2.kurs == Decimal("102.80")
 
-    # Count records in wkn_wert_datum
+    # Count records in wkn_kurs_datum
     count = len(
         db_session.execute(
-            select(WknWertDatum).where(
-                WknWertDatum.wkn_id == etf.id,
-                WknWertDatum.datum == datetime.date(2026, 9, 25),
+            select(WknKursDatum).where(
+                WknKursDatum.wkn_id == etf.id,
+                WknKursDatum.datum == datetime.date(2026, 9, 25),
             )
         )
         .scalars()
@@ -247,8 +251,9 @@ async def test_poll_and_save_all_success(db_session: Session):
     with patch.object(service, "fetch_closing_price_sync", side_effect=mock_fetch_sync):
         results = await service.poll_and_save(session=db_session)
         assert len(results) == 2
+        assert all(isinstance(r, WknKursDatum) for r in results)
 
-        prices = {r.wkn_id: r.wert for r in results}
+        prices = {r.wkn_id: r.kurs for r in results}
         assert prices[etf1.id] == Decimal("105.20")
         assert prices[etf2.id] == Decimal("123.45")
 
@@ -271,8 +276,9 @@ async def test_poll_and_save_partial_failure_continues(db_session: Session):
     with patch.object(service, "fetch_closing_price_sync", side_effect=mock_fetch_sync):
         results = await service.poll_and_save(session=db_session)
         assert len(results) == 1
+        assert isinstance(results[0], WknKursDatum)
         assert results[0].wkn_id == etf1.id
-        assert results[0].wert == Decimal("105.20")
+        assert results[0].kurs == Decimal("105.20")
 
 
 @pytest.mark.asyncio
@@ -309,7 +315,8 @@ async def test_poll_and_save_default_session_generator(db_session: Session):
         ):
             results = await service.poll_and_save(session=None)
             assert len(results) == 1
-            assert results[0].wert == Decimal("99.99")
+            assert isinstance(results[0], WknKursDatum)
+            assert results[0].kurs == Decimal("99.99")
 
 
 @pytest.mark.asyncio
@@ -395,3 +402,46 @@ def test_pd_is_na_helper():
     assert pd_is_na(float("nan")) is True
     assert pd_is_na(100.5) is False
     assert pd_is_na("not-a-number") is False
+
+
+def test_stock_price_result_dataclass():
+    """Tests StockPriceResult dataclass with kurs and backwards-compatible wert alias."""
+    # Instantiation with kurs
+    res1 = StockPriceResult(
+        wkn_id=1,
+        wkn="A0RPWH",
+        ticker="EUNL.TG",
+        datum=datetime.date(2026, 9, 25),
+        kurs=Decimal("105.50"),
+    )
+    assert res1.kurs == Decimal("105.50")
+    assert res1.wert == Decimal("105.50")
+
+    # Instantiation with wert keyword argument
+    res2 = StockPriceResult(
+        wkn_id=2,
+        wkn="A1JX52",
+        ticker="VWRL.TG",
+        datum=datetime.date(2026, 9, 25),
+        wert=Decimal("123.45"),
+    )
+    assert res2.kurs == Decimal("123.45")
+    assert res2.wert == Decimal("123.45")
+
+
+def test_save_stock_price_wert_kwarg_backward_compatibility(db_session: Session):
+    """Tests that calling save_stock_price with wert keyword argument saves to wkn_kurs_datum."""
+    etf = Etf(wkn="A0RPWH", name="MSCI World", ticker_yahoo="EUNL.TG", aktiv=True)
+    db_session.add(etf)
+    db_session.commit()
+
+    service = StockPriceService()
+    record = service.save_stock_price(
+        wkn_id=etf.id,
+        datum=datetime.date(2026, 9, 25),
+        wert=Decimal("99.50"),
+        session=db_session,
+    )
+    assert isinstance(record, WknKursDatum)
+    assert record.kurs == Decimal("99.50")
+

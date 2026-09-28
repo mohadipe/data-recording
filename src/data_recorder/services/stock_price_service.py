@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from data_recorder.core.config import Settings, get_settings
 from data_recorder.core.database import get_db_session
-from data_recorder.models.wertpapiere import Etf, WknWertDatum
+from data_recorder.models.wertpapiere import Etf, WknKursDatum
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,36 @@ class StockPriceResult:
     wkn: str
     ticker: str
     datum: datetime.date
-    wert: Decimal
+    kurs: Decimal
+
+    def __init__(
+        self,
+        wkn_id: int,
+        wkn: str,
+        ticker: str,
+        datum: datetime.date,
+        kurs: Decimal | None = None,
+        wert: Decimal | None = None,
+    ) -> None:
+        self.wkn_id = wkn_id
+        self.wkn = wkn
+        self.ticker = ticker
+        self.datum = datum
+        if kurs is not None:
+            self.kurs = kurs
+        elif wert is not None:
+            self.kurs = wert
+        else:
+            raise ValueError("Either 'kurs' or 'wert' must be provided.")
+
+    @property
+    def wert(self) -> Decimal:
+        """Backward-compatibility alias for kurs."""
+        return self.kurs
+
+    @wert.setter
+    def wert(self, value: Decimal) -> None:
+        self.kurs = value
 
 
 class StockPriceService:
@@ -129,25 +158,33 @@ class StockPriceService:
         self,
         wkn_id: int,
         datum: datetime.date,
-        wert: Decimal,
-        session: Session,
-    ) -> WknWertDatum:
-        """Idempotently saves or updates the stock price in wertpapiere.wkn_wert_datum."""
-        stmt = select(WknWertDatum).where(
-            WknWertDatum.wkn_id == wkn_id,
-            WknWertDatum.datum == datum,
+        kurs: Decimal | None = None,
+        session: Session | None = None,
+        *,
+        wert: Decimal | None = None,
+    ) -> WknKursDatum:
+        """Idempotently saves or updates the stock price in wertpapiere.wkn_kurs_datum."""
+        actual_kurs = kurs if kurs is not None else wert
+        if actual_kurs is None:
+            raise ValueError("Either 'kurs' or 'wert' must be provided.")
+        if session is None:
+            raise ValueError("Database session must be provided.")
+
+        stmt = select(WknKursDatum).where(
+            WknKursDatum.wkn_id == wkn_id,
+            WknKursDatum.datum == datum,
         )
         record = session.execute(stmt).scalar_one_or_none()
 
         if record is None:
-            record = WknWertDatum(
+            record = WknKursDatum(
                 wkn_id=wkn_id,
                 datum=datum,
-                wert=wert,
+                kurs=actual_kurs,
             )
             session.add(record)
         else:
-            record.wert = wert
+            record.kurs = actual_kurs
 
         session.commit()
         session.refresh(record)
@@ -155,14 +192,14 @@ class StockPriceService:
 
     async def _process_securities(
         self, session: Session, target_date: datetime.date | None = None
-    ) -> list[WknWertDatum]:
+    ) -> list[WknKursDatum]:
         """Iterates over active securities, fetches latest quotes, and saves them idempotently."""
         securities = self.get_active_securities(session)
         if not securities:
             logger.info("Keine aktiven Wertpapiere mit hinterlegtem Yahoo-Ticker vorhanden.")
             return []
 
-        saved_records: list[WknWertDatum] = []
+        saved_records: list[WknKursDatum] = []
         for sec in securities:
             ticker = sec.ticker_yahoo
             if not ticker:
@@ -182,7 +219,7 @@ class StockPriceService:
                 record = self.save_stock_price(
                     wkn_id=sec.id,
                     datum=quote_date,
-                    wert=price,
+                    kurs=price,
                     session=session,
                 )
                 record.etf = sec
@@ -210,7 +247,7 @@ class StockPriceService:
         self,
         session: Session | None = None,
         target_date: datetime.date | None = None,
-    ) -> list[WknWertDatum]:
+    ) -> list[WknKursDatum]:
         """Main entry point to fetch and persist quotes for all active securities."""
         if session is not None:
             return await self._process_securities(session, target_date=target_date)
