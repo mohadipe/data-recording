@@ -167,3 +167,56 @@ def test_heizoel_preis_crud(db_session: Session):
     db_session.delete(saved)
     db_session.commit()
     assert db_session.get(HeizoelPreis, saved.id) is None
+
+
+def test_messwert_multi_unit_same_date(db_session: Session):
+    """Verify heat meters can record both KWH and M3 on the exact same date."""
+    from sqlalchemy.exc import IntegrityError
+
+    zaehler = Zaehler(
+        geraete_nr="24389158",
+        einbau_dt=datetime.date(2025, 3, 1),
+        ausbau_dt=datetime.date(2031, 3, 1),
+        typ="WAERME",
+    )
+    db_session.add(zaehler)
+    db_session.commit()
+
+    # Same meter, same date, but different units (KWH and M3)
+    mw_kwh = Messwert(
+        zaehler_id=zaehler.id,
+        datum=datetime.date(2025, 3, 1),
+        wert=Decimal("58.00"),
+        einheit="KWH",
+    )
+    mw_m3 = Messwert(
+        zaehler_id=zaehler.id,
+        datum=datetime.date(2025, 3, 1),
+        wert=Decimal("14.25"),
+        einheit="M3",
+    )
+    db_session.add_all([mw_kwh, mw_m3])
+    db_session.commit()
+
+    rows = db_session.scalars(
+        select(Messwert).where(
+            Messwert.zaehler_id == zaehler.id,
+            Messwert.datum == datetime.date(2025, 3, 1),
+        )
+    ).all()
+    assert len(rows) == 2
+    units = {r.einheit for r in rows}
+    assert units == {"KWH", "M3"}
+
+    # Duplicate same (zaehler_id, datum, einheit) must fail UniqueConstraint
+    duplicate = Messwert(
+        zaehler_id=zaehler.id,
+        datum=datetime.date(2025, 3, 1),
+        wert=Decimal("60.00"),
+        einheit="KWH",
+    )
+    db_session.add(duplicate)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+

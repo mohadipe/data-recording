@@ -45,7 +45,9 @@ class Messwert(Base):
 
     __tablename__ = "messwerte"
     __table_args__: ClassVar[tuple[Any, ...]] = (
-        UniqueConstraint("zaehler_id", "datum", name="uq_zaehler_datum"),
+        UniqueConstraint(
+            "zaehler_id", "datum", "einheit", name="uq_zaehler_datum_einheit"
+        ),
         {"schema": "verbrauch"},
     )
 

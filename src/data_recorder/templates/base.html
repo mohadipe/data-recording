@@ -55,9 +55,14 @@
                     <span class="text-xs text-slate-400">Monatlicher Foto-Wizard</span>
                 </div>
             </div>
-            <a href="/wizard" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 transition">
-                Neu
-            </a>
+            <nav class="flex items-center space-x-1.5">
+                <a href="/wizard" class="text-xs px-3 py-1.5 rounded-lg border transition font-medium {% if request.url.path == '/wizard' or request.url.path == '/' %}bg-brand-600 border-brand-500 text-white{% else %}bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700{% endif %}">
+                    Ablesung
+                </a>
+                <a href="/zaehler" class="text-xs px-3 py-1.5 rounded-lg border transition font-medium {% if request.url.path.startswith('/zaehler') %}bg-brand-600 border-brand-500 text-white{% else %}bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700{% endif %}">
+                    Zähler
+                </a>
+            </nav>
         </header>
 
         <!-- Main Content -->

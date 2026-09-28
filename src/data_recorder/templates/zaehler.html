@@ -1,0 +1,444 @@
+{% extends "base.html" %}
+
+{% block title %}Zähler-Verwaltung{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col space-y-4" id="zaehler-app">
+    <!-- Header mit Titel und Neu-Button -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-bold text-slate-100">Zähler-Verwaltung</h2>
+            <p class="text-xs text-slate-400">Stammdaten, Lebenszyklus & Eichfristen</p>
+        </div>
+        <button type="button" id="btn-open-create-modal"
+            class="bg-brand-600 hover:bg-brand-500 active:scale-95 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg shadow-brand-600/30 transition flex items-center space-x-1.5">
+            <span>+</span>
+            <span>Neuer Zähler</span>
+        </button>
+    </div>
+
+    <!-- Filter Buttons (Aktive vs. Alle) -->
+    <div class="flex items-center space-x-2 border-b border-slate-800 pb-3">
+        <button type="button" id="filter-active-btn"
+            class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 active-filter transition">
+            Nur Aktive (<span id="count-active">0</span>)
+        </button>
+        <button type="button" id="filter-all-btn"
+            class="text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-transparent transition">
+            Alle (<span id="count-all">{{ meters|length }}</span>)
+        </button>
+    </div>
+
+    <!-- Zähler Liste -->
+    <div class="space-y-3" id="meter-list">
+        {% for meter in meters %}
+        <div class="meter-item bg-slate-800/50 border border-slate-700/80 rounded-2xl p-4 transition {% if not meter.is_active %}opacity-75 bg-slate-900/60 border-slate-800 is-decommissioned hidden{% endif %}"
+            data-meter-id="{{ meter.id }}"
+            data-is-active="{{ 'true' if meter.is_active else 'false' }}"
+            data-typ="{{ meter.typ }}"
+            data-nr="{{ meter.geraete_nr }}"
+            data-einbau="{{ meter.einbau_dt }}"
+            data-ausbau="{{ meter.ausbau_dt }}">
+            
+            <div class="flex items-start justify-between">
+                <div class="space-y-1">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-bold px-2 py-0.5 rounded-full 
+                            {% if meter.typ == 'STROM' %}bg-amber-500/20 text-amber-300 border border-amber-500/30
+                            {% elif meter.typ == 'WASSER' %}bg-sky-500/20 text-sky-300 border border-sky-500/30
+                            {% elif meter.typ == 'WAERME' %}bg-rose-500/20 text-rose-300 border border-rose-500/30
+                            {% else %}bg-purple-500/20 text-purple-300 border border-purple-500/30{% endif %}">
+                            {{ meter.typ }}
+                        </span>
+                        {% if meter.is_active %}
+                            <span class="text-[11px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                ✓ Aktiv
+                            </span>
+                        {% else %}
+                            <span class="text-[11px] font-medium text-slate-400 bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full">
+                                Ausgebaut
+                            </span>
+                        {% endif %}
+                    </div>
+                    <h3 class="text-base font-bold text-slate-100 font-mono tracking-wide pt-0.5">
+                        {{ meter.geraete_nr }}
+                    </h3>
+                </div>
+
+                <!-- Dropdown / Action Buttons -->
+                <div class="flex items-center space-x-1.5">
+                    <button type="button" class="btn-edit-meter text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition">
+                        Bearbeiten
+                    </button>
+                    {% if meter.is_active %}
+                    <button type="button" class="btn-ausbau-meter text-xs px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/40 text-rose-300 transition">
+                        Ausbauen
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Details: Einbau, Ausbau, Letzter Stand -->
+            <div class="mt-3 pt-3 border-t border-slate-700/50 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                    <span class="text-slate-400 block text-[11px]">Laufzeit / Eichung</span>
+                    <span class="text-slate-200 font-medium">
+                        {{ meter.einbau_dt }} ➔ {{ meter.ausbau_dt }}
+                    </span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block text-[11px]">Letzter Messwert</span>
+                    <span class="text-brand-300 font-medium truncate block">
+                        {{ meter.formatted_reading }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: NEUER ZÄHLER ANLEGEN               -->
+    <!-- ========================================== -->
+    <div id="create-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-slate-100">Neuen Zähler anlegen</h3>
+                <button type="button" class="btn-close-modal text-slate-400 hover:text-slate-200 text-lg leading-none">&times;</button>
+            </div>
+
+            <form id="create-meter-form" class="space-y-3.5">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Gerätenummer <span class="text-brand-400">*</span>
+                    </label>
+                    <input type="text" id="create-nr" required placeholder="z. B. 1 EMH00 0988 6540"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 font-mono">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Zählertyp <span class="text-brand-400">*</span>
+                    </label>
+                    <select id="create-typ" required
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                        <option value="STROM">STROM</option>
+                        <option value="WAERME">WAERME (2 Werte: kWh & m³)</option>
+                        <option value="WASSER">WASSER</option>
+                        <option value="VOLUMEN">VOLUMEN (Öl)</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            Einbaudatum <span class="text-brand-400">*</span>
+                        </label>
+                        <input type="date" id="create-einbau" required value="{{ today_date }}"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:ring-2 focus:ring-brand-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            Ausbau / Eichung bis
+                        </label>
+                        <input type="date" id="create-ausbau" value="{{ default_ausbau_date }}"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:ring-2 focus:ring-brand-500">
+                    </div>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button type="button" class="btn-close-modal w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl border border-slate-700 text-xs font-semibold transition">
+                        Abbrechen
+                    </button>
+                    <button type="submit" id="btn-save-create"
+                        class="w-2/3 bg-brand-600 hover:bg-brand-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-brand-600/30 transition">
+                        Zähler anlegen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: ZÄHLER AUSBAUEN                    -->
+    <!-- ========================================== -->
+    <div id="ausbau-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-rose-300">Zähler als ausgebaut markieren</h3>
+                <button type="button" class="btn-close-modal text-slate-400 hover:text-slate-200 text-lg leading-none">&times;</button>
+            </div>
+
+            <form id="ausbau-meter-form" class="space-y-3.5">
+                <input type="hidden" id="ausbau-meter-id">
+                <div>
+                    <span class="text-xs text-slate-400 block">Ausgewählter Zähler:</span>
+                    <span id="ausbau-meter-title" class="text-sm font-bold text-slate-100 font-mono"></span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Ausbaudatum <span class="text-rose-400">*</span>
+                    </label>
+                    <input type="date" id="ausbau-date-input" required value="{{ today_date }}"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-rose-500 font-mono">
+                    <p class="text-[11px] text-slate-400 mt-1">
+                        Der Zähler wird ab diesem Datum in der monatlichen Schnellauswahl nicht mehr aufgeführt.
+                    </p>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button type="button" class="btn-close-modal w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl border border-slate-700 text-xs font-semibold transition">
+                        Abbrechen
+                    </button>
+                    <button type="submit" id="btn-save-ausbau"
+                        class="w-2/3 bg-rose-600 hover:bg-rose-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-rose-600/30 transition">
+                        Als ausgebaut setzen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: ZÄHLER BEARBEITEN                  -->
+    <!-- ========================================== -->
+    <div id="edit-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-slate-100">Zähler bearbeiten</h3>
+                <button type="button" class="btn-close-modal text-slate-400 hover:text-slate-200 text-lg leading-none">&times;</button>
+            </div>
+
+            <form id="edit-meter-form" class="space-y-3.5">
+                <input type="hidden" id="edit-meter-id">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Gerätenummer <span class="text-brand-400">*</span>
+                    </label>
+                    <input type="text" id="edit-nr" required
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-mono">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Zählertyp <span class="text-brand-400">*</span>
+                    </label>
+                    <select id="edit-typ" required
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500">
+                        <option value="STROM">STROM</option>
+                        <option value="WAERME">WAERME</option>
+                        <option value="WASSER">WASSER</option>
+                        <option value="VOLUMEN">VOLUMEN (Öl)</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            Einbaudatum
+                        </label>
+                        <input type="date" id="edit-einbau" required
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:ring-2 focus:ring-brand-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            Ausbaudatum
+                        </label>
+                        <input type="date" id="edit-ausbau" required
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:ring-2 focus:ring-brand-500">
+                    </div>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button type="button" class="btn-close-modal w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl border border-slate-700 text-xs font-semibold transition">
+                        Abbrechen
+                    </button>
+                    <button type="submit" id="btn-save-edit"
+                        class="w-2/3 bg-brand-600 hover:bg-brand-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-brand-600/30 transition">
+                        Änderungen speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const createModal = document.getElementById("create-modal");
+        const ausbauModal = document.getElementById("ausbau-modal");
+        const editModal = document.getElementById("edit-modal");
+        const btnOpenCreate = document.getElementById("btn-open-create-modal");
+        const filterActiveBtn = document.getElementById("filter-active-btn");
+        const filterAllBtn = document.getElementById("filter-all-btn");
+        const meterCards = document.querySelectorAll(".meter-item");
+        const countActiveEl = document.getElementById("count-active");
+
+        // Count active meters
+        let activeCount = 0;
+        meterCards.forEach(card => {
+            if (card.dataset.isActive === "true") activeCount++;
+        });
+        countActiveEl.textContent = activeCount;
+
+        // Filter toggle
+        let showActiveOnly = true;
+        function updateFilterView() {
+            meterCards.forEach(card => {
+                const isActive = card.dataset.isActive === "true";
+                if (showActiveOnly) {
+                    card.classList.toggle("hidden", !isActive);
+                } else {
+                    card.classList.remove("hidden");
+                }
+            });
+            if (showActiveOnly) {
+                filterActiveBtn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 transition";
+                filterAllBtn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-transparent transition";
+            } else {
+                filterActiveBtn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 border border-transparent transition";
+                filterAllBtn.className = "text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 transition";
+            }
+        }
+        filterActiveBtn.addEventListener("click", () => {
+            showActiveOnly = true;
+            updateFilterView();
+        });
+        filterAllBtn.addEventListener("click", () => {
+            showActiveOnly = false;
+            updateFilterView();
+        });
+
+        // Close modals helper
+        document.querySelectorAll(".btn-close-modal").forEach(btn => {
+            btn.addEventListener("click", () => {
+                createModal.classList.add("hidden");
+                ausbauModal.classList.add("hidden");
+                editModal.classList.add("hidden");
+            });
+        });
+
+        // Open create modal
+        btnOpenCreate.addEventListener("click", () => {
+            createModal.classList.remove("hidden");
+            document.getElementById("create-nr").focus();
+        });
+
+        // Submit create form
+        document.getElementById("create-meter-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById("btn-save-create");
+            btn.disabled = true;
+            btn.textContent = "Speichere...";
+
+            const payload = {
+                geraete_nr: document.getElementById("create-nr").value.trim(),
+                typ: document.getElementById("create-typ").value,
+                einbau_dt: document.getElementById("create-einbau").value,
+                ausbau_dt: document.getElementById("create-ausbau").value || null,
+            };
+
+            try {
+                const res = await fetch("/api/zaehler", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Fehler beim Anlegen");
+                }
+                window.location.reload();
+            } catch (err) {
+                alert(`Fehler: ${err.message}`);
+                btn.disabled = false;
+                btn.textContent = "Zähler anlegen";
+            }
+        });
+
+        // Open Ausbau modal
+        document.querySelectorAll(".btn-ausbau-meter").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                const card = e.target.closest(".meter-item");
+                document.getElementById("ausbau-meter-id").value = card.dataset.meterId;
+                document.getElementById("ausbau-meter-title").textContent = `${card.dataset.typ} – ${card.dataset.nr}`;
+                ausbauModal.classList.remove("hidden");
+            });
+        });
+
+        // Submit Ausbau form
+        document.getElementById("ausbau-meter-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const id = document.getElementById("ausbau-meter-id").value;
+            const ausbauDt = document.getElementById("ausbau-date-input").value;
+            const btn = document.getElementById("btn-save-ausbau");
+            btn.disabled = true;
+            btn.textContent = "Speichere...";
+
+            try {
+                const res = await fetch(`/api/zaehler/${id}/ausbau`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ausbau_dt: ausbauDt }),
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Fehler beim Ausbauen");
+                }
+                window.location.reload();
+            } catch (err) {
+                alert(`Fehler: ${err.message}`);
+                btn.disabled = false;
+                btn.textContent = "Als ausgebaut setzen";
+            }
+        });
+
+        // Open Edit modal
+        document.querySelectorAll(".btn-edit-meter").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                const card = e.target.closest(".meter-item");
+                document.getElementById("edit-meter-id").value = card.dataset.meterId;
+                document.getElementById("edit-nr").value = card.dataset.nr;
+                document.getElementById("edit-typ").value = card.dataset.typ;
+                document.getElementById("edit-einbau").value = card.dataset.einbau;
+                document.getElementById("edit-ausbau").value = card.dataset.ausbau;
+                editModal.classList.remove("hidden");
+            });
+        });
+
+        // Submit Edit form
+        document.getElementById("edit-meter-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const id = document.getElementById("edit-meter-id").value;
+            const btn = document.getElementById("btn-save-edit");
+            btn.disabled = true;
+            btn.textContent = "Speichere...";
+
+            const payload = {
+                geraete_nr: document.getElementById("edit-nr").value.trim(),
+                typ: document.getElementById("edit-typ").value,
+                einbau_dt: document.getElementById("edit-einbau").value,
+                ausbau_dt: document.getElementById("edit-ausbau").value,
+            };
+
+            try {
+                const res = await fetch(`/api/zaehler/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Fehler beim Bearbeiten");
+                }
+                window.location.reload();
+            } catch (err) {
+                alert(`Fehler: ${err.message}`);
+                btn.disabled = false;
+                btn.textContent = "Änderungen speichern";
+            }
+        });
+    });
+</script>
+{% endblock %}

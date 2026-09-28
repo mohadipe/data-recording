@@ -328,3 +328,107 @@ def test_submit_reading_idempotent_update(client: TestClient, test_db_session: S
     assert len(all_rows) == 1
     assert all_rows[0].wert == Decimal("105.50")
 
+
+def test_submit_heat_meter_dual_values(client: TestClient, test_db_session: Session):
+    """Verify submitting heat meter with dual readings (KWH and M3) creates two Messwert rows."""
+    zaehler = Zaehler(
+        id=8,
+        geraete_nr="24389158",
+        einbau_dt=datetime.date(2025, 3, 1),
+        ausbau_dt=datetime.date(2031, 3, 1),
+        typ="WAERME",
+    )
+    # Previous readings for both units
+    prior_kwh = Messwert(
+        id=801,
+        zaehler_id=8,
+        datum=datetime.date(2026, 7, 1),
+        wert=Decimal("1347.00"),
+        einheit="KWH",
+    )
+    prior_m3 = Messwert(
+        id=802,
+        zaehler_id=8,
+        datum=datetime.date(2026, 7, 1),
+        wert=Decimal("540.26"),
+        einheit="M3",
+    )
+    test_db_session.add_all([zaehler, prior_kwh, prior_m3])
+    test_db_session.commit()
+
+    form_data = {
+        "zaehler_id": "8",
+        "datum": "2026-08-01",
+        "wert_kwh": "1408.00",
+        "wert_m3": "584.00",
+    }
+    response = client.post("/wizard/submit", data=form_data)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["is_dual"] is True
+    assert data["wert_kwh"] == 1408.00
+    assert data["verbrauch_kwh"] == 61.00  # 1408 - 1347
+    assert data["wert_m3"] == 584.00
+    assert data["verbrauch_m3"] == 43.74  # 584 - 540.26
+
+    # Verify both records saved in database
+    readings = test_db_session.scalars(
+        select(Messwert).where(
+            Messwert.zaehler_id == 8, Messwert.datum == datetime.date(2026, 8, 1)
+        )
+    ).all()
+    assert len(readings) == 2
+    by_unit = {r.einheit: r.wert for r in readings}
+    assert by_unit["KWH"] == Decimal("1408.00")
+    assert by_unit["M3"] == Decimal("584.00")
+
+
+def test_zaehler_lifecycle_crud(client: TestClient, test_db_session: Session):
+    """Verify creating a new meter, updating it, and decommissioning it via API."""
+    # 1. Create a new meter
+    create_payload = {
+        "geraete_nr": "1 EMH00 0988 6540",
+        "typ": "STROM",
+        "einbau_dt": "2026-09-28",
+        "ausbau_dt": "2036-09-28",
+    }
+    resp = client.post("/api/zaehler", json=create_payload)
+    assert resp.status_code == 201
+    created_data = resp.json()
+    assert created_data["success"] is True
+    new_id = created_data["zaehler"]["id"]
+    assert created_data["zaehler"]["geraete_nr"] == "1 EMH00 0988 6540"
+    assert created_data["zaehler"]["is_active"] is True
+
+    # 2. Update meter details
+    update_payload = {
+        "geraete_nr": "1 EMH00 0988 6540-MOD",
+    }
+    resp = client.patch(f"/api/zaehler/{new_id}", json=update_payload)
+    assert resp.status_code == 200
+    updated_data = resp.json()
+    assert updated_data["zaehler"]["geraete_nr"] == "1 EMH00 0988 6540-MOD"
+
+    # 3. List active meters - new meter must be in the list
+    resp = client.get("/api/zaehler?active_only=true")
+    assert resp.status_code == 200
+    active_ids = [z["id"] for z in resp.json()]
+    assert new_id in active_ids
+
+    # 4. Mark meter as decommissioned (ausgebaut)
+    resp = client.post(f"/api/zaehler/{new_id}/ausbau", json={"ausbau_dt": "2026-09-27"})
+    assert resp.status_code == 200
+    assert resp.json()["zaehler"]["is_active"] is False
+
+    # 5. List active meters - decommissioned meter must NO LONGER be in active list
+    resp = client.get("/api/zaehler?active_only=true")
+    active_ids = [z["id"] for z in resp.json()]
+    assert new_id not in active_ids
+
+    # 6. List all meters - decommissioned meter must STILL be present
+    resp = client.get("/api/zaehler?active_only=false")
+    all_ids = [z["id"] for z in resp.json()]
+    assert new_id in all_ids
+
+

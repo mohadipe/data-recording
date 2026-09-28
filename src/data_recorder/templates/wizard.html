@@ -54,9 +54,15 @@
 
             <!-- Zähler Auswahl Dropdown & Schnellwahl -->
             <div class="space-y-2">
-                <label for="zaehler_select" class="block text-sm font-medium text-slate-300">
-                    Aktiver Zähler <span class="text-brand-400">*</span>
-                </label>
+                <div class="flex items-center justify-between">
+                    <label for="zaehler_select" class="block text-sm font-medium text-slate-300">
+                        Aktiver Zähler <span class="text-brand-400">*</span>
+                    </label>
+                    <a href="/zaehler" class="text-xs text-brand-400 hover:text-brand-300 transition flex items-center space-x-1">
+                        <span>⚙️</span>
+                        <span>Zähler verwalten</span>
+                    </a>
+                </div>
                 <div class="relative">
                     <select id="zaehler_select" name="zaehler_id" required
                         class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3.5 text-base focus:ring-2 focus:ring-brand-500 focus:border-brand-500 appearance-none shadow-sm">
@@ -67,10 +73,15 @@
                                 data-unit="{{ meter.einheit }}"
                                 data-typ="{{ meter.typ }}"
                                 data-nr="{{ meter.geraete_nr }}"
+                                data-is-dual="{{ 'true' if meter.is_dual else 'false' }}"
                                 data-last-val="{{ meter.last_wert if meter.last_wert is not none else '' }}"
                                 data-last-date="{{ meter.last_datum if meter.last_datum is not none else '' }}"
+                                data-last-kwh="{{ meter.last_wert_kwh if meter.last_wert_kwh is not none else '' }}"
+                                data-last-m3="{{ meter.last_wert_m3 if meter.last_wert_m3 is not none else '' }}"
+                                data-formatted-kwh="{{ meter.formatted_kwh if meter.formatted_kwh else '' }}"
+                                data-formatted-m3="{{ meter.formatted_m3 if meter.formatted_m3 else '' }}"
                                 data-formatted="{{ meter.formatted_reading }}">
-                                {{ meter.typ }} – {{ meter.geraete_nr }} ({{ meter.einheit }})
+                                {{ meter.typ }} – {{ meter.geraete_nr }} {% if meter.is_dual %}(kWh & m³){% else %}({{ meter.einheit }}){% endif %}
                             </option>
                         {% endfor %}
                     </select>
@@ -99,7 +110,9 @@
                             </div>
                             <span class="text-xs text-slate-200 font-mono truncate font-medium">{{ meter.geraete_nr }}</span>
                             <span class="text-[10px] text-slate-400 mt-1 truncate">
-                                {% if meter.last_wert is not none %}
+                                {% if meter.is_dual and (meter.last_wert_kwh is not none or meter.last_wert_m3 is not none) %}
+                                    {{ meter.last_wert_kwh if meter.last_wert_kwh is not none else '–' }} kWh • {{ meter.last_wert_m3 if meter.last_wert_m3 is not none else '–' }} m³
+                                {% elif meter.last_wert is not none %}
                                     {{ meter.last_wert }} {{ meter.einheit }}
                                 {% else %}
                                     Neu
@@ -216,45 +229,89 @@
                     class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-brand-500 focus:border-brand-500 shadow-sm">
             </div>
 
-            <!-- Vorheriger Stand Anzeige -->
-            <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-3.5">
-                <span class="text-xs font-semibold text-slate-400 block mb-1">Historie</span>
-                <p id="previous-reading-text" class="text-sm text-slate-200 font-medium">
-                    Kein vorheriger Stand vorhanden
-                </p>
-            </div>
+            <!-- EINZEL-MESSWERT EINGABE (Standard: Strom, Wasser, Öl) -->
+            <div id="single-reading-section" class="space-y-4">
+                <!-- Vorheriger Stand Anzeige -->
+                <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-3.5">
+                    <span class="text-xs font-semibold text-slate-400 block mb-1">Historie</span>
+                    <p id="previous-reading-text" class="text-sm text-slate-200 font-medium">
+                        Kein vorheriger Stand vorhanden
+                    </p>
+                </div>
 
-            <!-- Neuer Zählerstand Eingabe -->
-            <div class="space-y-1.5">
-                <label for="wert-input" class="text-sm font-medium text-slate-300 flex items-center justify-between">
-                    <span>Neuer Zählerstand <span class="text-brand-400">*</span></span>
-                    <span id="current-unit-badge" class="text-xs font-bold text-slate-400">kWh</span>
-                </label>
-                <div class="relative">
-                    <input type="number" step="any" inputmode="decimal" id="wert-input" name="wert" required placeholder="0.00"
-                        class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3.5 text-xl font-bold font-mono focus:ring-2 focus:ring-brand-500 focus:border-brand-500 shadow-sm">
-                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-sm font-semibold text-slate-400" id="input-unit-label">
-                        kWh
+                <!-- Neuer Zählerstand Eingabe -->
+                <div class="space-y-1.5">
+                    <label for="wert-input" class="text-sm font-medium text-slate-300 flex items-center justify-between">
+                        <span>Neuer Zählerstand <span class="text-brand-400">*</span></span>
+                        <span id="current-unit-badge" class="text-xs font-bold text-slate-400">kWh</span>
+                    </label>
+                    <div class="relative">
+                        <input type="number" step="any" inputmode="decimal" id="wert-input" name="wert" placeholder="0.00"
+                            class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3.5 text-xl font-bold font-mono focus:ring-2 focus:ring-brand-500 focus:border-brand-500 shadow-sm">
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-sm font-semibold text-slate-400" id="input-unit-label">
+                            kWh
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Plausibilitäts-Check Live-Berechnung Card -->
+                <div id="diff-card" class="rounded-xl p-4 border border-slate-700 bg-slate-800/30 transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-slate-400">Berechneter Verbrauch:</span>
+                        <span id="diff-value-badge" class="text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300">
+                            ± 0
+                        </span>
+                    </div>
+                    <!-- Warnung bei negativem Wert -->
+                    <div id="diff-warning-box" class="hidden mt-3 p-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-200 text-xs flex items-start space-x-2">
+                        <span class="text-base leading-none">⚠️</span>
+                        <div>
+                            <strong class="font-bold">Achtung: Negativer Verbrauch!</strong>
+                            <p class="mt-0.5 text-rose-300" id="diff-warning-message">
+                                Der neue Stand ist kleiner als der vorherige Messwert. Bitte prüfe, ob die Ziffern korrekt abgelesen wurden.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Plausibilitäts-Check Live-Berechnung Card -->
-            <div id="diff-card" class="rounded-xl p-4 border transition">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-400">Berechneter Verbrauch:</span>
-                    <span id="diff-value-badge" class="text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300">
-                        ± 0
-                    </span>
+            <!-- DUAL-MESSWERT EINGABE (Wärmezähler: 2 Werte - kWh & m³) -->
+            <div id="dual-reading-section" class="space-y-4 hidden">
+                <!-- 1. Wert: Wärmeenergie (kWh) -->
+                <div class="p-3.5 rounded-xl border border-rose-500/30 bg-rose-950/20 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-rose-300 uppercase tracking-wide">1. Wärmeenergie (kWh)</span>
+                        <span id="dual-diff-kwh-badge" class="text-xs font-bold font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">± 0 kWh</span>
+                    </div>
+                    <p id="dual-kwh-history" class="text-xs text-slate-300 font-medium">Letzter Stand: Kein Stand erfasst</p>
+                    <div class="relative">
+                        <input type="number" step="any" inputmode="decimal" id="wert-kwh-input" name="wert_kwh" placeholder="0.00"
+                            class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3 text-lg font-bold font-mono focus:ring-2 focus:ring-rose-500 focus:border-rose-500 shadow-sm">
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-sm font-semibold text-rose-400">
+                            kWh
+                        </div>
+                    </div>
+                    <div id="dual-kwh-warning-box" class="hidden p-2 rounded-lg bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs">
+                        ⚠️ Neuer kWh-Stand ist geringer als der Vorwert!
+                    </div>
                 </div>
-                <!-- Warnung bei negativem Wert -->
-                <div id="diff-warning-box" class="hidden mt-3 p-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-200 text-xs flex items-start space-x-2">
-                    <span class="text-base leading-none">⚠️</span>
-                    <div>
-                        <strong class="font-bold">Achtung: Negativer Verbrauch!</strong>
-                        <p class="mt-0.5 text-rose-300" id="diff-warning-message">
-                            Der neue Stand ist kleiner als der vorherige Messwert. Bitte prüfe, ob die Ziffern korrekt abgelesen wurden.
-                        </p>
+
+                <!-- 2. Wert: Volumen (m³) -->
+                <div class="p-3.5 rounded-xl border border-sky-500/30 bg-sky-950/20 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-sky-300 uppercase tracking-wide">2. Volumen (m³)</span>
+                        <span id="dual-diff-m3-badge" class="text-xs font-bold font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">± 0 m³</span>
+                    </div>
+                    <p id="dual-m3-history" class="text-xs text-slate-300 font-medium">Letzter Stand: Kein Stand erfasst</p>
+                    <div class="relative">
+                        <input type="number" step="any" inputmode="decimal" id="wert-m3-input" name="wert_m3" placeholder="0.00"
+                            class="w-full bg-slate-800/90 text-slate-100 border border-slate-700 rounded-xl px-4 py-3 text-lg font-bold font-mono focus:ring-2 focus:ring-sky-500 focus:border-sky-500 shadow-sm">
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-sm font-semibold text-sky-400">
+                            m³
+                        </div>
+                    </div>
+                    <div id="dual-m3-warning-box" class="hidden p-2 rounded-lg bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs">
+                        ⚠️ Neuer m³-Stand ist geringer als der Vorwert!
                     </div>
                 </div>
             </div>
@@ -338,6 +395,8 @@
         let currentStep = 1;
         let selectedMeterData = null;
         let lastReadingVal = null;
+        let lastKwhVal = null;
+        let lastM3Val = null;
         let nextZaehlerId = null;
         let selectedFile = null;
 
@@ -356,6 +415,9 @@
         const btnChangePhoto = document.getElementById("btn-change-photo");
         const datumInput = document.getElementById("datum-input");
         const exifDateIndicator = document.getElementById("exif-date-indicator");
+        
+        // Single Reading elements
+        const singleSection = document.getElementById("single-reading-section");
         const wertInput = document.getElementById("wert-input");
         const currentUnitBadge = document.getElementById("current-unit-badge");
         const inputUnitLabel = document.getElementById("input-unit-label");
@@ -364,6 +426,18 @@
         const diffValueBadge = document.getElementById("diff-value-badge");
         const diffWarningBox = document.getElementById("diff-warning-box");
         const diffWarningMessage = document.getElementById("diff-warning-message");
+
+        // Dual Reading elements
+        const dualSection = document.getElementById("dual-reading-section");
+        const wertKwhInput = document.getElementById("wert-kwh-input");
+        const wertM3Input = document.getElementById("wert-m3-input");
+        const dualKwhHistory = document.getElementById("dual-kwh-history");
+        const dualM3History = document.getElementById("dual-m3-history");
+        const dualDiffKwhBadge = document.getElementById("dual-diff-kwh-badge");
+        const dualDiffM3Badge = document.getElementById("dual-diff-m3-badge");
+        const dualKwhWarningBox = document.getElementById("dual-kwh-warning-box");
+        const dualM3WarningBox = document.getElementById("dual-m3-warning-box");
+
         const btnToStep2 = document.getElementById("btn-to-step-2");
         const btnBackToStep1 = document.getElementById("btn-back-to-step-1");
         const btnBack1 = document.getElementById("btn-back-1");
@@ -415,19 +489,52 @@
             const unit = opt.dataset.unit || "kWh";
             const typ = opt.dataset.typ || "ZÄHLER";
             const nr = opt.dataset.nr || "";
+            const isDual = opt.dataset.isDual === "true";
             const lastValStr = opt.dataset.lastVal;
             const lastDate = opt.dataset.lastDate || "";
             const formatted = opt.dataset.formatted || "Kein Stand erfasst";
+            const lastKwhStr = opt.dataset.lastKwh;
+            const lastM3Str = opt.dataset.lastM3;
+            const formattedKwh = opt.dataset.formattedKwh || "Kein Stand erfasst";
+            const formattedM3 = opt.dataset.formattedM3 || "Kein Stand erfasst";
 
             lastReadingVal = lastValStr !== "" ? parseFloat(lastValStr) : null;
-            selectedMeterData = { id: meterId, typ, nr, unit, lastVal: lastReadingVal, lastDate };
+            lastKwhVal = lastKwhStr !== "" ? parseFloat(lastKwhStr) : null;
+            lastM3Val = lastM3Str !== "" ? parseFloat(lastM3Str) : null;
 
-            // Update UI in Step 2
+            selectedMeterData = { 
+                id: meterId, typ, nr, unit, isDual,
+                lastVal: lastReadingVal, lastKwh: lastKwhVal, lastM3: lastM3Val, lastDate 
+            };
+
+            // Update UI in Step 2 Header
             document.getElementById("step2-meter-typ").textContent = typ;
             document.getElementById("step2-meter-nr").textContent = nr;
-            currentUnitBadge.textContent = unit;
-            inputUnitLabel.textContent = unit;
-            previousReadingText.textContent = formatted;
+
+            if (isDual) {
+                // Show Dual section, hide single
+                singleSection.classList.add("hidden");
+                dualSection.classList.remove("hidden");
+                wertInput.removeAttribute("required");
+                wertKwhInput.setAttribute("required", "");
+                wertM3Input.setAttribute("required", "");
+
+                dualKwhHistory.textContent = formattedKwh;
+                dualM3History.textContent = formattedM3;
+                recalculateDualDiff();
+            } else {
+                // Show Single section, hide dual
+                dualSection.classList.add("hidden");
+                singleSection.classList.remove("hidden");
+                wertInput.setAttribute("required", "");
+                wertKwhInput.removeAttribute("required");
+                wertM3Input.removeAttribute("required");
+
+                currentUnitBadge.textContent = unit;
+                inputUnitLabel.textContent = unit;
+                previousReadingText.textContent = formatted;
+                recalculateDiff();
+            }
 
             // Highlight quick cards
             quickCards.forEach(card => {
@@ -436,8 +543,6 @@
                 card.classList.toggle("ring-brand-500", isSelected);
                 card.classList.toggle("bg-brand-950/40", isSelected);
             });
-
-            recalculateDiff();
         }
 
         // Quick cards click
@@ -530,7 +635,7 @@
             {% endif %}
         {% endif %}
 
-        // Recalculate Live Difference in Step 2
+        // Recalculate Live Difference in Step 2 (Single)
         function recalculateDiff() {
             const rawVal = wertInput.value.trim().replace(',', '.');
             const unit = selectedMeterData?.unit || "kWh";
@@ -557,12 +662,10 @@
             diffValueBadge.textContent = diffFormatted;
 
             if (diff >= 0) {
-                // Plausible positive consumption
                 diffValueBadge.className = "text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
                 diffWarningBox.classList.add("hidden");
                 diffCard.className = "rounded-xl p-4 border border-emerald-500/30 bg-emerald-950/20 transition";
             } else {
-                // Warning: negative consumption
                 diffValueBadge.className = "text-sm font-bold font-mono px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30";
                 diffWarningMessage.textContent = `Der neue Stand (${formatNumber(currentVal)} ${unit}) ist geringer als der Vorwert (${formatNumber(lastReadingVal)} ${unit}). Differenz: ${diffFormatted}`;
                 diffWarningBox.classList.remove("hidden");
@@ -570,7 +673,64 @@
             }
         }
 
+        // Recalculate Live Difference in Step 2 (Dual Heat Meter)
+        function recalculateDualDiff() {
+            // 1. kWh
+            const rawKwh = wertKwhInput.value.trim().replace(',', '.');
+            if (rawKwh === "" || isNaN(rawKwh)) {
+                dualDiffKwhBadge.textContent = "± 0 kWh";
+                dualDiffKwhBadge.className = "text-xs font-bold font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400";
+                dualKwhWarningBox.classList.add("hidden");
+            } else {
+                const currentKwh = parseFloat(rawKwh);
+                if (lastKwhVal === null) {
+                    dualDiffKwhBadge.textContent = `Erststand: ${formatNumber(currentKwh)} kWh`;
+                    dualDiffKwhBadge.className = "text-xs font-bold font-mono px-2 py-0.5 rounded bg-brand-500/20 text-brand-300";
+                    dualKwhWarningBox.classList.add("hidden");
+                } else {
+                    const diffKwh = currentKwh - lastKwhVal;
+                    const diffStr = (diffKwh >= 0 ? "+" : "") + formatNumber(diffKwh) + " kWh";
+                    dualDiffKwhBadge.textContent = diffStr;
+                    if (diffKwh >= 0) {
+                        dualDiffKwhBadge.className = "text-xs font-bold font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300";
+                        dualKwhWarningBox.classList.add("hidden");
+                    } else {
+                        dualDiffKwhBadge.className = "text-xs font-bold font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300";
+                        dualKwhWarningBox.classList.remove("hidden");
+                    }
+                }
+            }
+
+            // 2. m³
+            const rawM3 = wertM3Input.value.trim().replace(',', '.');
+            if (rawM3 === "" || isNaN(rawM3)) {
+                dualDiffM3Badge.textContent = "± 0 m³";
+                dualDiffM3Badge.className = "text-xs font-bold font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400";
+                dualM3WarningBox.classList.add("hidden");
+            } else {
+                const currentM3 = parseFloat(rawM3);
+                if (lastM3Val === null) {
+                    dualDiffM3Badge.textContent = `Erststand: ${formatNumber(currentM3)} m³`;
+                    dualDiffM3Badge.className = "text-xs font-bold font-mono px-2 py-0.5 rounded bg-brand-500/20 text-brand-300";
+                    dualM3WarningBox.classList.add("hidden");
+                } else {
+                    const diffM3 = currentM3 - lastM3Val;
+                    const diffStr = (diffM3 >= 0 ? "+" : "") + formatNumber(diffM3) + " m³";
+                    dualDiffM3Badge.textContent = diffStr;
+                    if (diffM3 >= 0) {
+                        dualDiffM3Badge.className = "text-xs font-bold font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300";
+                        dualM3WarningBox.classList.add("hidden");
+                    } else {
+                        dualDiffM3Badge.className = "text-xs font-bold font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300";
+                        dualM3WarningBox.classList.remove("hidden");
+                    }
+                }
+            }
+        }
+
         wertInput.addEventListener("input", recalculateDiff);
+        wertKwhInput.addEventListener("input", recalculateDualDiff);
+        wertM3Input.addEventListener("input", recalculateDualDiff);
 
         // Step Navigation Buttons
         btnToStep2.addEventListener("click", () => {
@@ -581,7 +741,13 @@
             }
             onMeterSelected(selectZaehler.value);
             goToStep(2);
-            setTimeout(() => wertInput.focus(), 300);
+            setTimeout(() => {
+                if (selectedMeterData?.isDual) {
+                    wertKwhInput.focus();
+                } else {
+                    wertInput.focus();
+                }
+            }, 300);
         });
 
         btnBackToStep1.addEventListener("click", () => goToStep(1));
@@ -591,9 +757,22 @@
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
 
-            if (!selectZaehler.value || !datumInput.value || !wertInput.value) {
+            if (!selectZaehler.value || !datumInput.value) {
                 alert("Bitte alle Pflichtfelder ausfüllen.");
                 return;
+            }
+
+            const isDual = selectedMeterData?.isDual;
+            if (isDual) {
+                if (!wertKwhInput.value || !wertM3Input.value) {
+                    alert("Bitte sowohl den Stand für kWh als auch für m³ eintragen.");
+                    return;
+                }
+            } else {
+                if (!wertInput.value) {
+                    alert("Bitte den Zählerstand eintragen.");
+                    return;
+                }
             }
 
             btnSubmit.disabled = true;
@@ -603,10 +782,17 @@
             const formData = new FormData();
             formData.append("zaehler_id", selectZaehler.value);
             formData.append("datum", datumInput.value);
-            formData.append("wert", wertInput.value.trim().replace(',', '.'));
-            if (selectedMeterData?.unit) {
-                formData.append("einheit", selectedMeterData.unit);
+
+            if (isDual) {
+                formData.append("wert_kwh", wertKwhInput.value.trim().replace(',', '.'));
+                formData.append("wert_m3", wertM3Input.value.trim().replace(',', '.'));
+            } else {
+                formData.append("wert", wertInput.value.trim().replace(',', '.'));
+                if (selectedMeterData?.unit) {
+                    formData.append("einheit", selectedMeterData.unit);
+                }
             }
+
             if (selectedFile) {
                 formData.append("foto", selectedFile);
             } else if (sharedPhotoIdInput && sharedPhotoIdInput.value) {
@@ -629,13 +815,23 @@
                 // Fill Step 3 Summary
                 document.getElementById("summary-meter").textContent = `${result.typ} (${result.geraete_nr})`;
                 document.getElementById("summary-date").textContent = result.datum;
-                document.getElementById("summary-value").textContent = `${formatNumber(result.wert)} ${result.einheit}`;
-                
-                if (result.verbrauch !== null) {
-                    const sign = result.verbrauch >= 0 ? "+" : "";
-                    document.getElementById("summary-consumption").textContent = `${sign}${formatNumber(result.verbrauch)} ${result.einheit}`;
+
+                if (result.is_dual) {
+                    document.getElementById("summary-value").textContent = `${formatNumber(result.wert_kwh)} kWh | ${formatNumber(result.wert_m3)} m³`;
+                    
+                    const signKwh = (result.verbrauch_kwh !== null && result.verbrauch_kwh >= 0) ? "+" : "";
+                    const signM3 = (result.verbrauch_m3 !== null && result.verbrauch_m3 >= 0) ? "+" : "";
+                    const strKwh = result.verbrauch_kwh !== null ? `${signKwh}${formatNumber(result.verbrauch_kwh)} kWh` : "Neu";
+                    const strM3 = result.verbrauch_m3 !== null ? `${signM3}${formatNumber(result.verbrauch_m3)} m³` : "Neu";
+                    document.getElementById("summary-consumption").textContent = `${strKwh} • ${strM3}`;
                 } else {
-                    document.getElementById("summary-consumption").textContent = "Erstablesung";
+                    document.getElementById("summary-value").textContent = `${formatNumber(result.wert)} ${result.einheit}`;
+                    if (result.verbrauch !== null) {
+                        const sign = result.verbrauch >= 0 ? "+" : "";
+                        document.getElementById("summary-consumption").textContent = `${sign}${formatNumber(result.verbrauch)} ${result.einheit}`;
+                    } else {
+                        document.getElementById("summary-consumption").textContent = "Erstablesung";
+                    }
                 }
 
                 if (result.foto_uploaded) {
