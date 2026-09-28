@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+
+{% block title %}Depot-Verwaltung{% endblock %}
+
+{% block content %}
+<div class="flex-1 flex flex-col space-y-5" id="depot-app">
+    <!-- Header mit Titel und Aktions-Button -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-bold text-slate-100">Depot-Verwaltung</h2>
+            <p class="text-xs text-slate-400">Anteilsbestände & Tradegate-Kurse</p>
+        </div>
+        <button type="button" id="btn-open-holding-modal"
+            class="bg-brand-600 hover:bg-brand-500 active:scale-95 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg shadow-brand-600/30 transition flex items-center space-x-1.5">
+            <span>+</span>
+            <span>Bestand erfassen</span>
+        </button>
+    </div>
+
+    <!-- Toast Notification Banner -->
+    <div id="toast-banner" class="hidden transition-all duration-300 rounded-xl p-3 text-xs font-medium border flex items-center justify-between shadow-lg">
+        <span id="toast-message"></span>
+        <button type="button" id="btn-close-toast" class="ml-2 text-slate-400 hover:text-slate-200 text-sm font-bold leading-none">&times;</button>
+    </div>
+
+    <!-- KPI & Status Cards Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- KPI: Gesamt-Depotwert -->
+        <div class="bg-gradient-to-br from-slate-800/90 to-slate-800/40 border border-slate-700/80 rounded-2xl p-4 shadow-sm">
+            <span class="text-xs font-semibold text-slate-400 block mb-1">Gesamt-Depotwert</span>
+            <div class="text-2xl font-black text-emerald-400 tracking-tight font-mono">
+                {{ total_depotwert|currency_de }}
+            </div>
+            <span class="text-[11px] text-slate-500 mt-1 block">Summe aller aktiven Positionen</span>
+        </div>
+
+        <!-- KPI: Letzte Kursaktualisierung & Trigger -->
+        <div class="bg-gradient-to-br from-slate-800/90 to-slate-800/40 border border-slate-700/80 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+            <div>
+                <span class="text-xs font-semibold text-slate-400 block mb-1">Letzte Kurse</span>
+                <div class="text-sm font-bold text-slate-200 font-mono">
+                    {% if latest_kurs_datum %}
+                        {{ latest_kurs_datum|date_de }}
+                    {% else %}
+                        <span class="text-slate-500 italic">Noch keine Kurse</span>
+                    {% endif %}
+                </div>
+            </div>
+            <button type="button" id="btn-update-prices"
+                class="mt-3 w-full bg-slate-800 hover:bg-slate-700 active:scale-95 text-brand-400 hover:text-brand-300 border border-slate-700 hover:border-brand-500/40 text-xs font-semibold py-2 px-3 rounded-xl transition flex items-center justify-center space-x-2">
+                <svg id="icon-refresh" class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span id="btn-update-prices-text">Kurse jetzt aktualisieren</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Aktive Wertpapiere Übersicht -->
+    <div class="space-y-3">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+            <h3 class="text-sm font-bold text-slate-200">Aktive Wertpapiere</h3>
+            <span class="text-xs text-slate-400 bg-slate-800/80 border border-slate-700/60 px-2 py-0.5 rounded-full font-mono font-medium">
+                {{ holdings|length }} Position(en)
+            </span>
+        </div>
+
+        {% if holdings|length == 0 %}
+        <div class="bg-slate-800/40 border border-dashed border-slate-700/70 rounded-2xl p-6 text-center text-slate-400 text-xs">
+            Keine aktiven Wertpapiere in der Datenbank konfiguriert.
+        </div>
+        {% else %}
+        <div class="space-y-3" id="holdings-list">
+            {% for item in holdings %}
+            <div class="bg-slate-800/50 border border-slate-700/80 hover:border-slate-600 rounded-2xl p-4 transition shadow-sm"
+                data-wkn-id="{{ item.wkn_id }}"
+                data-wkn="{{ item.wkn }}"
+                data-name="{{ item.name or item.wkn }}">
+                
+                <!-- Oberste Zeile: Badges & Schnellaktion -->
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="text-xs font-bold px-2 py-0.5 rounded-md bg-brand-500/20 text-brand-300 border border-brand-500/30 font-mono">
+                            {{ item.wkn }}
+                        </span>
+                        {% if item.ticker %}
+                        <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 border border-slate-600/40 font-mono">
+                            {{ item.ticker }}
+                        </span>
+                        {% endif %}
+                        {% if item.isin %}
+                        <span class="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                            {{ item.isin }}
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    <button type="button"
+                        class="btn-quick-add-holding text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition flex items-center space-x-1"
+                        data-wkn-id="{{ item.wkn_id }}">
+                        <span>+</span>
+                        <span>Bestand</span>
+                    </button>
+                </div>
+
+                <!-- Wertpapier Name -->
+                <h4 class="text-base font-bold text-slate-100 mt-2 tracking-tight">
+                    {{ item.name or item.wkn }}
+                </h4>
+
+                <!-- Kennzahlen Raster -->
+                <div class="mt-3 pt-3 border-t border-slate-700/50 grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                        <span class="text-slate-400 block text-[11px]">Aktueller Kurs</span>
+                        <span class="text-slate-200 font-semibold font-mono">
+                            {% if item.kurs is not none %}
+                                {{ item.kurs|currency_de }}
+                            {% else %}
+                                <span class="text-slate-500 font-normal">–</span>
+                            {% endif %}
+                        </span>
+                        <span class="text-[10px] text-slate-500 block truncate">
+                            {% if item.kurs_datum %}
+                                vom {{ item.kurs_datum|date_de }}
+                            {% else %}
+                                kein Kurs
+                            {% endif %}
+                        </span>
+                    </div>
+
+                    <div>
+                        <span class="text-slate-400 block text-[11px]">Anteile</span>
+                        <span class="text-slate-200 font-semibold font-mono">
+                            {{ item.anteile|number_de }}
+                        </span>
+                        <span class="text-[10px] text-slate-500 block truncate">
+                            {% if item.bestand_datum %}
+                                {{ item.bestand_datum|date_de }}
+                            {% else %}
+                                noch kein Bestand
+                            {% endif %}
+                        </span>
+                    </div>
+
+                    <div>
+                        <span class="text-slate-400 block text-[11px]">Gesamtwert</span>
+                        <span class="text-emerald-400 font-bold font-mono">
+                            {{ item.gesamtwert|currency_de }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Bestandshistorie Tabelle -->
+    <div class="space-y-3 pt-2">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div>
+                <h3 class="text-sm font-bold text-slate-200">Bestandshistorie</h3>
+                <p class="text-[11px] text-slate-400">Erfasste Stichtagsbestände der Wertpapiere</p>
+            </div>
+            <span class="text-xs text-slate-400 bg-slate-800/80 border border-slate-700/60 px-2 py-0.5 rounded-full font-mono font-medium">
+                {{ history|length }} Eintrag/Einträge
+            </span>
+        </div>
+
+        {% if history|length == 0 %}
+        <div class="bg-slate-800/30 border border-slate-800 rounded-xl p-4 text-center text-slate-500 text-xs">
+            Noch keine Bestandshistorie vorhanden.
+        </div>
+        {% else %}
+        <div class="overflow-x-auto rounded-xl border border-slate-700/80 bg-slate-800/40">
+            <table class="w-full text-left text-xs text-slate-300">
+                <thead class="bg-slate-800/90 text-slate-400 font-semibold border-b border-slate-700">
+                    <tr>
+                        <th class="py-2.5 px-3">Stichtag</th>
+                        <th class="py-2.5 px-3">Wertpapier</th>
+                        <th class="py-2.5 px-3 text-right">Anteile</th>
+                        <th class="py-2.5 px-3 text-center">Aktion</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50">
+                    {% for h in history %}
+                    <tr class="hover:bg-slate-800/60 transition">
+                        <td class="py-2.5 px-3 font-mono font-medium text-slate-200 whitespace-nowrap">
+                            {{ h.datum|date_de }}
+                        </td>
+                        <td class="py-2.5 px-3">
+                            <span class="font-medium text-slate-100 block">{{ h.name or h.wkn }}</span>
+                            <span class="text-[11px] text-slate-400 font-mono">{{ h.wkn }}</span>
+                        </td>
+                        <td class="py-2.5 px-3 text-right font-mono font-semibold text-slate-100 whitespace-nowrap">
+                            {{ h.anteile|number_de }}
+                        </td>
+                        <td class="py-2.5 px-3 text-center whitespace-nowrap">
+                            <button type="button"
+                                class="btn-delete-holding text-rose-400 hover:text-rose-300 text-xs px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/40 transition active:scale-95"
+                                data-holding-id="{{ h.id }}"
+                                data-holding-desc="{{ h.name or h.wkn }} ({{ h.datum|date_de }}: {{ h.anteile|number_de }})">
+                                Löschen
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: BESTAND ERFASSEN                   -->
+    <!-- ========================================== -->
+    <div id="holding-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-slate-100">Bestand erfassen</h3>
+                <button type="button" class="btn-close-modal text-slate-400 hover:text-slate-200 text-lg leading-none">&times;</button>
+            </div>
+
+            <form id="holding-form" class="space-y-3.5">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Wertpapier <span class="text-brand-400">*</span>
+                    </label>
+                    <select id="modal-wkn-id" required
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                        {% for item in holdings %}
+                        <option value="{{ item.wkn_id }}">
+                            {{ item.name or item.wkn }} ({{ item.wkn }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Stichtag <span class="text-brand-400">*</span>
+                    </label>
+                    <input type="date" id="modal-datum" required value="{{ today_date }}"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-mono">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Anzahl Anteile <span class="text-brand-400">*</span>
+                    </label>
+                    <input type="number" step="any" min="0.0001" id="modal-anteile" required placeholder="z. B. 125,50"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-mono">
+                    <p class="text-[11px] text-slate-400 mt-1">
+                        Erfasst den Stichtagsbestand für das ausgewählte Wertpapier.
+                    </p>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button type="button" class="btn-close-modal w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl border border-slate-700 text-xs font-semibold transition">
+                        Abbrechen
+                    </button>
+                    <button type="submit" id="btn-save-holding"
+                        class="w-2/3 bg-brand-600 hover:bg-brand-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-brand-600/30 transition">
+                        Bestand speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const holdingModal = document.getElementById("holding-modal");
+        const btnOpenModal = document.getElementById("btn-open-holding-modal");
+        const btnUpdatePrices = document.getElementById("btn-update-prices");
+        const btnUpdatePricesText = document.getElementById("btn-update-prices-text");
+        const iconRefresh = document.getElementById("icon-refresh");
+        const toastBanner = document.getElementById("toast-banner");
+        const toastMessage = document.getElementById("toast-message");
+        const btnCloseToast = document.getElementById("btn-close-toast");
+
+        function showToast(msg, isError = false) {
+            toastMessage.textContent = msg;
+            toastBanner.className = isError
+                ? "rounded-xl p-3 text-xs font-medium border flex items-center justify-between shadow-lg bg-rose-950/80 border-rose-800/80 text-rose-200"
+                : "rounded-xl p-3 text-xs font-medium border flex items-center justify-between shadow-lg bg-emerald-950/80 border-emerald-800/80 text-emerald-200";
+            toastBanner.classList.remove("hidden");
+            setTimeout(() => {
+                toastBanner.classList.add("hidden");
+            }, 6000);
+        }
+
+        btnCloseToast.addEventListener("click", () => {
+            toastBanner.classList.add("hidden");
+        });
+
+        // Close modals helper
+        document.querySelectorAll(".btn-close-modal").forEach(btn => {
+            btn.addEventListener("click", () => {
+                holdingModal.classList.add("hidden");
+            });
+        });
+
+        // Close modal on click outside
+        holdingModal.addEventListener("click", (e) => {
+            if (e.target === holdingModal) {
+                holdingModal.classList.add("hidden");
+            }
+        });
+
+        // Open modal
+        if (btnOpenModal) {
+            btnOpenModal.addEventListener("click", () => {
+                document.getElementById("modal-anteile").value = "";
+                holdingModal.classList.remove("hidden");
+                document.getElementById("modal-anteile").focus();
+            });
+        }
+
+        // Quick add from security card
+        document.querySelectorAll(".btn-quick-add-holding").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                const wknId = btn.dataset.wknId;
+                const selectEl = document.getElementById("modal-wkn-id");
+                if (selectEl && wknId) {
+                    selectEl.value = wknId;
+                }
+                document.getElementById("modal-anteile").value = "";
+                holdingModal.classList.remove("hidden");
+                document.getElementById("modal-anteile").focus();
+            });
+        });
+
+        // Submit holding form
+        document.getElementById("holding-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById("btn-save-holding");
+            btn.disabled = true;
+            btn.textContent = "Speichere...";
+
+            const payload = {
+                wkn_id: parseInt(document.getElementById("modal-wkn-id").value, 10),
+                datum: document.getElementById("modal-datum").value,
+                anteile: parseFloat(document.getElementById("modal-anteile").value.replace(",", ".")),
+            };
+
+            try {
+                const res = await fetch("/api/finance/holdings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Fehler beim Speichern");
+                }
+                window.location.reload();
+            } catch (err) {
+                showToast(`Fehler: ${err.message}`, true);
+                btn.disabled = false;
+                btn.textContent = "Bestand speichern";
+            }
+        });
+
+        // Delete holding
+        document.querySelectorAll(".btn-delete-holding").forEach(btn => {
+            btn.addEventListener("click", async (e) => {
+                const id = btn.dataset.holdingId;
+                const desc = btn.dataset.holdingDesc;
+                if (!confirm(`Bestandseintrag für "${desc}" wirklich löschen?`)) {
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = "...";
+
+                try {
+                    const res = await fetch(`/api/finance/holdings/${id}`, {
+                        method: "DELETE",
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || "Fehler beim Löschen");
+                    }
+                    window.location.reload();
+                } catch (err) {
+                    showToast(`Fehler: ${err.message}`, true);
+                    btn.disabled = false;
+                    btn.textContent = "Löschen";
+                }
+            });
+        });
+
+        // Update Prices Trigger
+        if (btnUpdatePrices) {
+            btnUpdatePrices.addEventListener("click", async () => {
+                btnUpdatePrices.disabled = true;
+                btnUpdatePricesText.textContent = "Kurse werden abgerufen...";
+                iconRefresh.classList.add("animate-spin");
+
+                try {
+                    const res = await fetch("/api/finance/update-prices", {
+                        method: "POST",
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || data.detail || "Fehler beim Kursabruf");
+                    }
+                    showToast(data.message || "Kurse erfolgreich aktualisiert!");
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } catch (err) {
+                    showToast(`Fehler: ${err.message}`, true);
+                    btnUpdatePrices.disabled = false;
+                    btnUpdatePricesText.textContent = "Kurse jetzt aktualisieren";
+                    iconRefresh.classList.remove("animate-spin");
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

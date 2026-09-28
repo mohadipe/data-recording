@@ -1,10 +1,12 @@
 import datetime
 import logging
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -16,7 +18,8 @@ from data_recorder.services.stock_price_service import StockPriceService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/finance", tags=["Wertpapiere & Finanzen"])
+router = APIRouter(tags=["Wertpapiere & Finanzen"])
+api_router = APIRouter(prefix="/api/finance", tags=["Wertpapiere & Finanzen"])
 
 
 class StockPriceItemResponse(BaseModel):
@@ -142,7 +145,7 @@ def _serialize_stock_record(record: WknKursDatum) -> StockPriceItemResponse:
     )
 
 
-@router.post(
+@api_router.post(
     "/update-prices",
     response_model=UpdatePricesResponse,
     summary="Manueller Tradegate-Kursabfrage Trigger",
@@ -188,13 +191,13 @@ async def update_prices(
     )
 
 
-@router.get(
+@api_router.get(
     "/latest",
     response_model=list[StockPriceItemResponse],
     summary="Neueste Kurswerte aller Wertpapiere",
     description="Liefert die jeweils aktuellsten Notierungen aus der Tabelle wkn_kurs_datum.",
 )
-@router.get(
+@api_router.get(
     "/latest-prices",
     response_model=list[StockPriceItemResponse],
     summary="Neueste Kurswerte aller Wertpapiere (Alias)",
@@ -236,7 +239,7 @@ async def get_latest_prices(
     return [_serialize_stock_record(r) for r in records]
 
 
-@router.post(
+@api_router.post(
     "/scan-hibiscus",
     response_model=ScanHibiscusResponse,
     summary="Manueller Hibiscus-Kontoauszug-Scanner Trigger",
@@ -288,7 +291,7 @@ async def scan_hibiscus(
     )
 
 
-@router.get(
+@api_router.get(
     "/holdings",
     response_model=list[HoldingItemResponse],
     summary="Aktuelle Anteilsbestände und Depotübersicht",
@@ -379,7 +382,7 @@ async def get_holdings(
     return results
 
 
-@router.get(
+@api_router.get(
     "/holdings/history",
     response_model=list[HoldingHistoryItemResponse],
     summary="Historie der Anteilsbestände",
@@ -413,7 +416,7 @@ async def get_holdings_history(
     ]
 
 
-@router.post(
+@api_router.post(
     "/holdings",
     response_model=HoldingHistoryItemResponse,
     summary="Stichtagsbestand erfassen oder aktualisieren",
@@ -461,7 +464,7 @@ async def create_or_update_holding(
     )
 
 
-@router.delete(
+@api_router.delete(
     "/holdings/{id}",
     summary="Stichtagsbestand löschen",
     description="Löscht einen Stichtags-Anteilsbestand anhand seiner ID.",
@@ -481,3 +484,89 @@ async def delete_holding(
     session.delete(record)
     session.commit()
     return {"status": "ok", "message": f"Bestandseintrag {id} erfolgreich gelöscht."}
+
+
+TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def format_currency_de(val: float | Decimal | None) -> str:
+    """Formats numeric value as German currency (z. B. 1.234,56 €)."""
+    if val is None:
+        return "0,00 €"
+    formatted = f"{float(val):,.2f}"
+    return formatted.replace(",", "X").replace(".", ",").replace("X", ".") + " €"
+
+
+def format_number_de(val: float | Decimal | None, decimals: int = 4) -> str:
+    """Formats numeric value with German separators and flexible decimal places."""
+    if val is None:
+        return "0,00"
+    raw = f"{float(val):.{decimals}f}"
+    if "." in raw:
+        int_str, dec_str = raw.split(".")
+        dec_str = dec_str.rstrip("0")
+        if len(dec_str) < 2:
+            dec_str = dec_str.ljust(2, "0")
+        int_formatted = f"{int(int_str):,}".replace(",", ".")
+        return f"{int_formatted},{dec_str}"
+    return f"{int(raw):,}".replace(",", ".") + ",00"
+
+
+def format_date_de(d: datetime.date | datetime.datetime | str | None) -> str:
+    """Formats date or datetime into German notation DD.MM.YYYY."""
+    if not d:
+        return "–"
+    if isinstance(d, str):
+        try:
+            d = datetime.date.fromisoformat(d)
+        except ValueError:
+            return d
+    if isinstance(d, datetime.datetime):
+        return d.strftime("%d.%m.%Y")
+    return d.strftime("%d.%m.%Y")
+
+
+templates.env.filters["currency_de"] = format_currency_de
+templates.env.filters["number_de"] = format_number_de
+templates.env.filters["date_de"] = format_date_de
+
+
+@router.get("/depot", response_class=HTMLResponse, summary="Depotübersicht und Anteilsverwaltung")
+async def get_depot_page(
+    request: Request,
+    session: Session = Depends(get_wertpapiere_db),
+) -> HTMLResponse:
+    """Rendert die Depot-Übersichtsseite mit Anteilsbeständen, Kurswerten und Historie."""
+    holdings = await get_holdings(session=session)
+    history = await get_holdings_history(wkn_id=None, session=session)
+
+    total_depotwert = round(sum(h.gesamtwert for h in holdings), 2)
+    latest_kurs_datum = max(
+        (h.kurs_datum for h in holdings if h.kurs_datum is not None),
+        default=None,
+    )
+    latest_bestand_datum = max(
+        (h.bestand_datum for h in holdings if h.bestand_datum is not None),
+        default=None,
+    )
+
+    today = datetime.date.today()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="depot.html",
+        context={
+            "request": request,
+            "holdings": holdings,
+            "history": history,
+            "total_depotwert": total_depotwert,
+            "latest_kurs_datum": latest_kurs_datum,
+            "latest_bestand_datum": latest_bestand_datum,
+            "today_date": today.isoformat(),
+        },
+    )
+
+
+# Attach API routes to root router
+router.include_router(api_router)
