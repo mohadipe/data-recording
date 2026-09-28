@@ -70,5 +70,20 @@
             {% block content %}{% endblock %}
         </main>
     </div>
+
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                    .then((registration) => {
+                        console.log('PWA ServiceWorker registered with scope:', registration.scope);
+                    })
+                    .catch((err) => {
+                        console.warn('PWA ServiceWorker registration failed:', err);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

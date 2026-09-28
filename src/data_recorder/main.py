@@ -61,6 +61,18 @@ async def get_manifest() -> FileResponse:
     return FileResponse(manifest_file, media_type="application/manifest+json")
 
 
+@app.get("/sw.js", include_in_schema=False)
+async def get_service_worker() -> FileResponse:
+    """Serve PWA Service Worker at root scope."""
+    sw_file = STATIC_DIR / "sw.js"
+    return FileResponse(
+        sw_file,
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/"},
+    )
+
+
+
 if __name__ == "__main__":
     uvicorn.run(
         "data_recorder.main:app",

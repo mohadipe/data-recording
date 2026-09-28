@@ -3,10 +3,44 @@
 import json
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
+from data_recorder.core.database import Base, get_db_session
 from data_recorder.main import app
+
+
+@pytest.fixture
+def test_db_session():
+    """In-memory SQLite test session."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+        execution_options={
+            "schema_translate_map": {"verbrauch": None, "wertpapiere": None}
+        },
+    )
+    Base.metadata.create_all(bind=engine)
+    with Session(engine) as session:
+        yield session
+
+
+@pytest.fixture
+def client(test_db_session: Session):
+    """FastAPI TestClient with overridden get_db_session."""
+    def override_get_db_session():
+        yield test_db_session
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
 
 
 def test_manifest_file_structure():
@@ -89,9 +123,35 @@ def test_manifest_share_target_structure():
 
 
 
-def test_static_icon_endpoint_http():
+def test_static_icon_endpoint_http(client: TestClient):
     """Verify GET /static/icons/icon-192.png returns 200 and image/png."""
-    client = TestClient(app)
     response = client.get("/static/icons/icon-192.png")
     assert response.status_code == 200
     assert "image/png" in response.headers.get("content-type", "")
+
+
+def test_service_worker_file_exists():
+    """Verify sw.js exists in static directory."""
+    sw_path = Path("src/data_recorder/static/sw.js")
+    assert sw_path.exists(), "static/sw.js must exist"
+    content = sw_path.read_text(encoding="utf-8")
+    assert "install" in content
+    assert "activate" in content
+    assert "fetch" in content
+
+
+def test_service_worker_endpoint_http(client: TestClient):
+    """Verify GET /sw.js returns 200, javascript content type, and Service-Worker-Allowed header."""
+    response = client.get("/sw.js")
+    assert response.status_code == 200
+    assert "javascript" in response.headers.get("content-type", "")
+    assert response.headers.get("Service-Worker-Allowed") == "/"
+
+
+def test_base_template_registers_service_worker(client: TestClient):
+    """Verify HTML template includes Service Worker registration script."""
+    response = client.get("/wizard")
+    assert response.status_code == 200
+    assert "navigator.serviceWorker.register('/sw.js'" in response.text
+
+
