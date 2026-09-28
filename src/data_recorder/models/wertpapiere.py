@@ -49,6 +49,16 @@ class Etf(Base):
         back_populates="etf",
         cascade="all, delete-orphan",
     )
+    kurs_daten: Mapped[list["WknKursDatum"]] = relationship(
+        "WknKursDatum",
+        back_populates="etf",
+        cascade="all, delete-orphan",
+    )
+    bestand_daten: Mapped[list["WknBestandDatum"]] = relationship(
+        "WknBestandDatum",
+        back_populates="etf",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<Etf(id={self.id}, wkn='{self.wkn}', name='{self.name}', ticker='{self.ticker_yahoo}', aktiv={self.aktiv})>"
@@ -128,6 +138,66 @@ class WknErtragDatum(Base):
 
     def __repr__(self) -> str:
         return f"<WknErtragDatum(id={self.id}, wkn_id={self.wkn_id}, datum={self.datum}, betrag={self.betrag}, typ='{self.typ}')>"
+
+
+class WknKursDatum(Base):
+    """Tägliche Schlusskurse je Wertpapier im Schema wertpapiere."""
+
+    __tablename__ = "wkn_kurs_datum"
+    __table_args__: ClassVar[tuple[Any, ...]] = (
+        UniqueConstraint("wkn_id", "datum", name="uq_wkn_kurs_wkn_datum"),
+        {"schema": "wertpapiere"},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    wkn_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("wertpapiere.etf.id"),
+        nullable=False,
+        index=True,
+    )
+    datum: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+    kurs: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    erfasst_am: Mapped[datetime.datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    etf: Mapped[Etf] = relationship("Etf", back_populates="kurs_daten")
+
+    def __repr__(self) -> str:
+        return f"<WknKursDatum(id={self.id}, wkn_id={self.wkn_id}, datum={self.datum}, kurs={self.kurs})>"
+
+
+class WknBestandDatum(Base):
+    """Stichtags-Anteilsbestände je Wertpapier im Schema wertpapiere."""
+
+    __tablename__ = "wkn_bestand_datum"
+    __table_args__: ClassVar[tuple[Any, ...]] = (
+        UniqueConstraint("wkn_id", "datum", name="uq_wkn_bestand_wkn_datum"),
+        {"schema": "wertpapiere"},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    wkn_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("wertpapiere.etf.id"),
+        nullable=False,
+        index=True,
+    )
+    datum: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+    anteile: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    erfasst_am: Mapped[datetime.datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    etf: Mapped[Etf] = relationship("Etf", back_populates="bestand_daten")
+
+    def __repr__(self) -> str:
+        return f"<WknBestandDatum(id={self.id}, wkn_id={self.wkn_id}, datum={self.datum}, anteile={self.anteile})>"
 
 
 class HibiscusImportLog(Base):

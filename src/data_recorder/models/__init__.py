@@ -10,8 +10,10 @@ from data_recorder.models.verbrauch import (
 from data_recorder.models.wertpapiere import (
     Etf,
     HibiscusImportLog,
+    WknBestandDatum,
     WknErtragDatum,
     WknInvestDatum,
+    WknKursDatum,
     WknWertDatum,
 )
 
@@ -25,8 +27,10 @@ __all__ = [
     "Messwert",
     "Messwerte",
     "WaermepumpeStundenwert",
+    "WknBestandDatum",
     "WknErtragDatum",
     "WknInvestDatum",
+    "WknKursDatum",
     "WknWertDatum",
     "Zaehler",
 ]
