@@ -284,8 +284,9 @@ combined_data AS (
         rk.wkn_id,
         rk.kurs,
         rk.anteile,
-        ROUND(COALESCE(rk.anteile, 0.0000) * rk.kurs, 2) AS depotwert
+        ROUND(rk.anteile * rk.kurs, 2) AS depotwert
     FROM raw_kurs rk
+    WHERE rk.anteile IS NOT NULL
 ),
 perf_base AS (
     SELECT 
@@ -375,6 +376,7 @@ latest_wert AS (
     INNER JOIN (
         SELECT wkn_id, MAX(datum) AS max_datum
         FROM wertpapiere.wkn_wert_datum
+        WHERE datum <= '2026-07-16'
         GROUP BY wkn_id
     ) mw ON w.wkn_id = mw.wkn_id AND w.datum = mw.max_datum
 ),

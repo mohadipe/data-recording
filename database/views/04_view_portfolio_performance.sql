@@ -45,8 +45,9 @@ combined_data AS (
         rk.wkn_id,
         rk.kurs,
         rk.anteile,
-        ROUND(COALESCE(rk.anteile, 0.0000) * rk.kurs, 2) AS depotwert
+        ROUND(rk.anteile * rk.kurs, 2) AS depotwert
     FROM raw_kurs rk
+    WHERE rk.anteile IS NOT NULL
 ),
 perf_base AS (
     SELECT 
