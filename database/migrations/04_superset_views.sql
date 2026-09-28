@@ -252,109 +252,187 @@ USE wertpapiere;
 
 -- 2.1 Zeitreihen Performance je Wertpapier
 CREATE OR REPLACE VIEW wertpapiere.view_portfolio_performance AS
+WITH raw_kurs AS (
+    SELECT 
+        k.id AS source_id,
+        k.datum,
+        k.wkn_id,
+        k.kurs,
+        (
+            SELECT b.anteile 
+            FROM wertpapiere.wkn_bestand_datum b 
+            WHERE b.wkn_id = k.wkn_id AND b.datum <= k.datum 
+            ORDER BY b.datum DESC, b.id DESC 
+            LIMIT 1
+        ) AS anteile
+    FROM wertpapiere.wkn_kurs_datum k
+),
+combined_data AS (
+    SELECT 
+        w.id AS source_id,
+        w.datum,
+        w.wkn_id,
+        CAST(NULL AS DECIMAL(10, 4)) AS kurs,
+        CAST(NULL AS DECIMAL(12, 4)) AS anteile,
+        w.wert AS depotwert
+    FROM wertpapiere.wkn_wert_datum w
+    WHERE w.datum <= '2026-07-16'
+    UNION ALL
+    SELECT 
+        rk.source_id,
+        rk.datum,
+        rk.wkn_id,
+        rk.kurs,
+        rk.anteile,
+        ROUND(COALESCE(rk.anteile, 0.0000) * rk.kurs, 2) AS depotwert
+    FROM raw_kurs rk
+),
+perf_base AS (
+    SELECT 
+        cd.source_id,
+        cd.datum,
+        cd.wkn_id,
+        e.wkn,
+        e.isin,
+        e.name,
+        e.ticker_yahoo,
+        e.typ,
+        e.aktiv,
+        cd.kurs,
+        cd.anteile,
+        cd.depotwert,
+        COALESCE((
+            SELECT SUM(i.invest) 
+            FROM wertpapiere.wkn_invest_datum i 
+            WHERE i.wkn_id = cd.wkn_id AND i.datum <= cd.datum
+        ), 0.00) AS kumuliertes_invest,
+        COALESCE((
+            SELECT SUM(er.betrag) 
+            FROM wertpapiere.wkn_ertrag_datum er 
+            WHERE er.wkn_id = cd.wkn_id AND er.datum <= cd.datum
+        ), 0.00) AS kumulierter_ertrag
+    FROM combined_data cd
+    JOIN wertpapiere.etf e ON e.id = cd.wkn_id
+)
 SELECT 
-    w.id AS wert_id,
-    w.datum,
-    e.id AS wkn_id,
-    e.wkn,
-    e.isin,
-    e.name,
-    e.ticker_yahoo,
-    e.typ,
-    e.aktiv,
-    w.wert AS depotwert,
-    COALESCE((
-        SELECT SUM(i.invest) 
-        FROM wertpapiere.wkn_invest_datum i 
-        WHERE i.wkn_id = w.wkn_id AND i.datum <= w.datum
-    ), 0.00) AS kumuliertes_invest,
-    COALESCE((
-        SELECT SUM(er.betrag) 
-        FROM wertpapiere.wkn_ertrag_datum er 
-        WHERE er.wkn_id = w.wkn_id AND er.datum <= w.datum
-    ), 0.00) AS kumulierter_ertrag,
-    ROUND(w.wert + COALESCE((
-        SELECT SUM(er.betrag) 
-        FROM wertpapiere.wkn_ertrag_datum er 
-        WHERE er.wkn_id = w.wkn_id AND er.datum <= w.datum
-    ), 0.00), 2) AS gesamtwert_inkl_ertrag,
-    ROUND((w.wert + COALESCE((
-        SELECT SUM(er.betrag) 
-        FROM wertpapiere.wkn_ertrag_datum er 
-        WHERE er.wkn_id = w.wkn_id AND er.datum <= w.datum
-    ), 0.00)) - COALESCE((
-        SELECT SUM(i.invest) 
-        FROM wertpapiere.wkn_invest_datum i 
-        WHERE i.wkn_id = w.wkn_id AND i.datum <= w.datum
-    ), 0.00), 2) AS gewinn_verlust_euro,
+    source_id,
+    datum,
+    wkn_id,
+    wkn,
+    isin,
+    name,
+    ticker_yahoo,
+    typ,
+    aktiv,
+    kurs,
+    anteile,
+    depotwert,
+    kumuliertes_invest,
+    kumulierter_ertrag,
+    ROUND(depotwert + kumulierter_ertrag, 2) AS gesamtwert_inkl_ertrag,
+    ROUND((depotwert + kumulierter_ertrag) - kumuliertes_invest, 2) AS gewinn_verlust_euro,
     ROUND(
         CASE 
-            WHEN COALESCE((SELECT SUM(i.invest) FROM wertpapiere.wkn_invest_datum i WHERE i.wkn_id = w.wkn_id AND i.datum <= w.datum), 0.00) > 0 
-            THEN (((w.wert + COALESCE((SELECT SUM(er.betrag) FROM wertpapiere.wkn_ertrag_datum er WHERE er.wkn_id = w.wkn_id AND er.datum <= w.datum), 0.00)) - 
-                  (SELECT SUM(i.invest) FROM wertpapiere.wkn_invest_datum i WHERE i.wkn_id = w.wkn_id AND i.datum <= w.datum)) / 
-                  (SELECT SUM(i.invest) FROM wertpapiere.wkn_invest_datum i WHERE i.wkn_id = w.wkn_id AND i.datum <= w.datum)) * 100
+            WHEN kumuliertes_invest > 0 
+            THEN (((depotwert + kumulierter_ertrag) - kumuliertes_invest) / kumuliertes_invest) * 100
             ELSE 0 
         END, 2
     ) AS rendite_prozent
-FROM wertpapiere.wkn_wert_datum w
-JOIN wertpapiere.etf e ON e.id = w.wkn_id;
+FROM perf_base;
 
 -- 2.2 Aktuelle Gesamtübersicht je Wertpapier
 CREATE OR REPLACE VIEW wertpapiere.view_portfolio_uebersicht_aktuell AS
-WITH latest_wert AS (
+WITH latest_kurs AS (
+    SELECT 
+        k.wkn_id,
+        k.datum,
+        k.kurs
+    FROM wertpapiere.wkn_kurs_datum k
+    INNER JOIN (
+        SELECT wkn_id, MAX(datum) AS max_datum
+        FROM wertpapiere.wkn_kurs_datum
+        GROUP BY wkn_id
+    ) mk ON k.wkn_id = mk.wkn_id AND k.datum = mk.max_datum
+),
+latest_bestand AS (
+    SELECT 
+        b.wkn_id,
+        b.datum,
+        b.anteile
+    FROM wertpapiere.wkn_bestand_datum b
+    INNER JOIN (
+        SELECT wkn_id, MAX(datum) AS max_datum
+        FROM wertpapiere.wkn_bestand_datum
+        GROUP BY wkn_id
+    ) mb ON b.wkn_id = mb.wkn_id AND b.datum = mb.max_datum
+),
+latest_wert AS (
     SELECT 
         w.wkn_id,
         w.datum AS letzter_stichtag,
         w.wert AS aktueller_wert
     FROM wertpapiere.wkn_wert_datum w
     INNER JOIN (
-        SELECT wkn_id, MAX(datum) AS max_datum 
-        FROM wertpapiere.wkn_wert_datum 
+        SELECT wkn_id, MAX(datum) AS max_datum
+        FROM wertpapiere.wkn_wert_datum
         GROUP BY wkn_id
     ) mw ON w.wkn_id = mw.wkn_id AND w.datum = mw.max_datum
+),
+portfolio_base AS (
+    SELECT 
+        e.id AS wkn_id,
+        e.wkn,
+        e.isin,
+        e.name,
+        e.ticker_yahoo,
+        e.typ,
+        e.aktiv,
+        CASE 
+            WHEN lb.anteile IS NOT NULL AND lk.kurs IS NOT NULL THEN lk.datum
+            ELSE COALESCE(lw.letzter_stichtag, lk.datum, lb.datum)
+        END AS letzter_stichtag,
+        lk.kurs AS aktueller_kurs,
+        lb.anteile AS aktueller_bestand,
+        CASE 
+            WHEN lb.anteile IS NOT NULL AND lk.kurs IS NOT NULL THEN ROUND(lb.anteile * lk.kurs, 2)
+            ELSE COALESCE(lw.aktueller_wert, 0.00)
+        END AS aktueller_wert,
+        COALESCE((
+            SELECT SUM(i.invest) 
+            FROM wertpapiere.wkn_invest_datum i 
+            WHERE i.wkn_id = e.id
+        ), 0.00) AS invest_gesamt,
+        COALESCE((
+            SELECT SUM(er.betrag) 
+            FROM wertpapiere.wkn_ertrag_datum er 
+            WHERE er.wkn_id = e.id
+        ), 0.00) AS ertrag_gesamt
+    FROM wertpapiere.etf e
+    LEFT JOIN latest_kurs lk ON lk.wkn_id = e.id
+    LEFT JOIN latest_bestand lb ON lb.wkn_id = e.id
+    LEFT JOIN latest_wert lw ON lw.wkn_id = e.id
 )
 SELECT 
-    e.id AS wkn_id,
-    e.wkn,
-    e.isin,
-    e.name,
-    e.ticker_yahoo,
-    e.typ,
-    e.aktiv,
-    lw.letzter_stichtag,
-    COALESCE(lw.aktueller_wert, 0.00) AS aktueller_wert,
-    COALESCE((
-        SELECT SUM(i.invest) 
-        FROM wertpapiere.wkn_invest_datum i 
-        WHERE i.wkn_id = e.id
-    ), 0.00) AS invest_gesamt,
-    COALESCE((
-        SELECT SUM(er.betrag) 
-        FROM wertpapiere.wkn_ertrag_datum er 
-        WHERE er.wkn_id = e.id
-    ), 0.00) AS ertrag_gesamt,
-    ROUND(COALESCE(lw.aktueller_wert, 0.00) + COALESCE((
-        SELECT SUM(er.betrag) 
-        FROM wertpapiere.wkn_ertrag_datum er 
-        WHERE er.wkn_id = e.id
-    ), 0.00), 2) AS gesamtwert_inkl_ertrag,
-    ROUND((COALESCE(lw.aktueller_wert, 0.00) + COALESCE((
-        SELECT SUM(er.betrag) 
-        FROM wertpapiere.wkn_ertrag_datum er 
-        WHERE er.wkn_id = e.id
-    ), 0.00)) - COALESCE((
-        SELECT SUM(i.invest) 
-        FROM wertpapiere.wkn_invest_datum i 
-        WHERE i.wkn_id = e.id
-    ), 0.00), 2) AS gewinn_verlust_euro,
+    wkn_id,
+    wkn,
+    isin,
+    name,
+    ticker_yahoo,
+    typ,
+    aktiv,
+    letzter_stichtag,
+    aktueller_kurs,
+    aktueller_bestand,
+    aktueller_wert,
+    invest_gesamt,
+    ertrag_gesamt,
+    ROUND(aktueller_wert + ertrag_gesamt, 2) AS gesamtwert_inkl_ertrag,
+    ROUND((aktueller_wert + ertrag_gesamt) - invest_gesamt, 2) AS gewinn_verlust_euro,
     ROUND(
         CASE 
-            WHEN COALESCE((SELECT SUM(i.invest) FROM wertpapiere.wkn_invest_datum i WHERE i.wkn_id = e.id), 0.00) > 0 
-            THEN (((COALESCE(lw.aktueller_wert, 0.00) + COALESCE((SELECT SUM(er.betrag) FROM wertpapiere.wkn_ertrag_datum er WHERE er.wkn_id = e.id), 0.00)) - 
-                  (SELECT SUM(i.invest) FROM wertpapiere.wkn_invest_datum i WHERE i.wkn_id = e.id)) / 
-                  (SELECT SUM(i.invest) FROM wertpapiere.wkn_invest_datum i WHERE i.wkn_id = e.id)) * 100
+            WHEN invest_gesamt > 0 
+            THEN (((aktueller_wert + ertrag_gesamt) - invest_gesamt) / invest_gesamt) * 100
             ELSE 0 
         END, 2
     ) AS rendite_gesamt_prozent
-FROM wertpapiere.etf e
-LEFT JOIN latest_wert lw ON lw.wkn_id = e.id;
+FROM portfolio_base;

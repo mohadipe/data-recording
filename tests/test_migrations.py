@@ -71,6 +71,27 @@ def test_migration_04_superset_views_and_view_files():
     assert (views_dir / "04_view_portfolio_performance.sql").exists()
     assert (views_dir / "05_view_portfolio_uebersicht_aktuell.sql").exists()
 
+    # Verify hybrid portfolio performance view content
+    view_04 = (views_dir / "04_view_portfolio_performance.sql").read_text(encoding="utf-8").lower()
+    assert "source_id" in view_04
+    assert "wkn_kurs_datum" in view_04
+    assert "wkn_bestand_datum" in view_04
+    assert "2026-07-16" in view_04
+    assert "kurs" in view_04
+    assert "anteile" in view_04
+
+    # Verify portfolio overview view content
+    view_05 = (views_dir / "05_view_portfolio_uebersicht_aktuell.sql").read_text(encoding="utf-8").lower()
+    assert "aktueller_kurs" in view_05
+    assert "aktueller_bestand" in view_05
+    assert "wkn_kurs_datum" in view_05
+    assert "wkn_bestand_datum" in view_05
+
+    # Verify migration 04 also contains the updated views
+    assert "source_id" in content
+    assert "aktueller_kurs" in content
+    assert "aktueller_bestand" in content
+
 
 def test_migration_05_kurs_bestand_exists_and_content():
     migration_file = (
