@@ -179,6 +179,101 @@ def test_extract_metrics_with_status01_fallback():
     assert metrics.cop_aktuell == Decimal("4.00")
 
 
+def test_extract_metrics_vaillant_ctlv3_and_hmu_payload():
+    """Tests extracting metrics from actual Vaillant multi-circuit payload (ctlv3 + hmu + vr_71 + Broadcast)."""
+    service = EbusService()
+    payload = {
+        "Broadcast": {
+            "messages": {
+                "Outsidetemp": {
+                    "name": "Outsidetemp",
+                    "lastup": 1791556381,
+                    "fields": {"value": {"value": 12.188}},
+                }
+            }
+        },
+        "ctlv3": {
+            "messages": {
+                "Hc1FlowTemp": {
+                    "name": "Hc1FlowTemp",
+                    "lastup": 1791556217,
+                    "fields": {"value": {"value": 26.375}},
+                },
+                "YieldTotal": {
+                    "name": "YieldTotal",
+                    "lastup": 1791556489,
+                    "fields": {"value": {"value": 23238}},
+                },
+                "PrEnergySumHc": {
+                    "name": "PrEnergySumHc",
+                    "lastup": 1791556490,
+                    "fields": {"value": {"value": 8309}},
+                },
+                "PrEnergySumHwc": {
+                    "name": "PrEnergySumHwc",
+                    "lastup": 1791556491,
+                    "fields": {"value": {"value": 990}},
+                },
+            }
+        },
+        "hmu": {
+            "messages": {
+                "TotalEnergyUsage": {
+                    "name": "TotalEnergyUsage",
+                    "lastup": 1791556489,
+                    "fields": {"value": {"value": 9208}},
+                },
+                "YieldHc": {
+                    "name": "YieldHc",
+                    "lastup": 1791556506,
+                    "fields": {"value": {"value": 21396}},
+                },
+                "YieldHwc": {
+                    "name": "YieldHwc",
+                    "lastup": 1791556489,
+                    "fields": {"value": {"value": 1879}},
+                },
+                "Status01": {
+                    "name": "Status01",
+                    "lastup": 1791556507,
+                    "fields": {
+                        "temp": {"value": 29.0},
+                        "temp_1": {"value": 25.5},
+                        "pumpstate": {"value": "off"},
+                    },
+                },
+            }
+        },
+        "vr_71": {
+            "messages": {
+                "SensorData1": {
+                    "name": "SensorData1",
+                    "lastup": 1791556398,
+                    "fields": {
+                        "s1": {"value": 29.38},
+                        "s2": {"value": 25.88},
+                        "s3": {"value": 24.0},
+                    },
+                }
+            }
+        },
+    }
+
+    metrics = service.extract_metrics(payload)
+    assert metrics.aussentemperatur == Decimal("12.188")
+    assert metrics.vorlauf_temp == Decimal("26.375")
+    assert metrics.ruecklauf_temp == Decimal("25.5")  # Extracted from Status01 temp_1 (fields)
+    assert metrics.ertrag_heizen_kwh == Decimal("21396")
+    assert metrics.ertrag_warmwasser_kwh == Decimal("1879")
+    assert metrics.ertrag_gesamt_kwh == Decimal("23238")
+    assert metrics.strom_gesamt_kwh == Decimal("9208")
+    assert metrics.strom_heizen_kwh == Decimal("8309")
+    assert metrics.strom_warmwasser_kwh == Decimal("990")
+    # COP = (21396 + 1879) / (8309 + 990) = 23275 / 9299 = 2.5029... -> 2.50
+    assert metrics.cop_aktuell == Decimal("2.50")
+
+
+
 @pytest.mark.asyncio
 async def test_fetch_ebusd_data_success():
     """Tests successful HTTP GET from ebusd."""

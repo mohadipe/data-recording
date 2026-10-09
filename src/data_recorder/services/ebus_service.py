@@ -3,7 +3,9 @@ from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal, InvalidOperation
 import logging
+import socket
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
@@ -244,6 +246,7 @@ class EbusService:
             [
                 "EnergyInputHeating",
                 "EnergyInputHc",
+                "PrEnergySumHc",
                 "ConsumedElectricalEnergyHeating",
             ],
         )
@@ -257,6 +260,7 @@ class EbusService:
             [
                 "EnergyInputHotWater",
                 "EnergyInputHwc",
+                "PrEnergySumHwc",
                 "ConsumedElectricalEnergyDomesticHotWater",
             ],
         )
@@ -294,20 +298,37 @@ class EbusService:
         if vorlauf_temp is None or ruecklauf_temp is None:
             status01_node = self._find_message_node(data, ["Status01"])
             if status01_node and isinstance(status01_node, dict):
-                values = status01_node.get("values", status01_node)
-                if isinstance(values, dict):
+                fields = (
+                    status01_node.get("fields")
+                    or status01_node.get("values")
+                    or status01_node
+                )
+                if isinstance(fields, dict):
                     if vorlauf_temp is None:
-                        vorlauf_temp = _to_decimal(
-                            values.get("temp", {}).get("value")
-                            if isinstance(values.get("temp"), dict)
-                            else values.get("temp")
-                        )
+                        vorlauf_temp = _extract_numeric_from_node(fields.get("temp"))
                     if ruecklauf_temp is None:
-                        ruecklauf_temp = _to_decimal(
-                            values.get("temp_1", {}).get("value")
-                            if isinstance(values.get("temp_1"), dict)
-                            else values.get("temp_1")
-                        )
+                        ruecklauf_temp = _extract_numeric_from_node(fields.get("temp_1"))
+
+        # Fallback for Vorlauf / Rücklauf from vr_71 SensorData1 if available
+        if vorlauf_temp is None or ruecklauf_temp is None:
+            sensordata_node = self._find_message_node(data, ["SensorData1"])
+            if sensordata_node and isinstance(sensordata_node, dict):
+                fields = (
+                    sensordata_node.get("fields")
+                    or sensordata_node.get("values")
+                    or sensordata_node
+                )
+                if isinstance(fields, dict):
+                    if vorlauf_temp is None:
+                        vorlauf_temp = _extract_numeric_from_node(fields.get("s1"))
+                    if ruecklauf_temp is None:
+                        ruecklauf_temp = _extract_numeric_from_node(fields.get("s2"))
+
+        # Fallback for total counters if component counters are available
+        if ertrag_gesamt is None and ertrag_heizen is not None and ertrag_ww is not None:
+            ertrag_gesamt = ertrag_heizen + ertrag_ww
+        if strom_gesamt is None and strom_heizen is not None and strom_ww is not None:
+            strom_gesamt = strom_heizen + strom_ww
 
         # Calculate COP
         cop = calculate_cop(
@@ -334,6 +355,34 @@ class EbusService:
             raw_data=data,
         )
 
+    def _trigger_socket_reads(
+        self, host: str, port: int = 8888, timeout: float = 2.0
+    ) -> None:
+        """Sends active read commands to ebusd TCP port to ensure registers are refreshed and assigned poll priority."""
+        commands = [
+            b"read -p 1 -c hmu TotalEnergyUsage\n",
+            b"read -p 1 -c hmu YieldHc\n",
+            b"read -p 1 -c hmu YieldHwc\n",
+            b"read -p 1 -c ctlv3 YieldTotal\n",
+            b"read -p 1 -c ctlv3 PrEnergySumHc\n",
+            b"read -p 1 -c ctlv3 PrEnergySumHwc\n",
+        ]
+        try:
+            with socket.create_connection((host, port), timeout=timeout) as sock:
+                for cmd in commands:
+                    try:
+                        sock.sendall(cmd)
+                        sock.recv(512)
+                    except Exception:
+                        pass
+        except Exception as exc:
+            logger.debug(
+                "Socket-Abfrage gegen ebusd %s:%d übersprungen oder nicht erreichbar: %s",
+                host,
+                port,
+                exc,
+            )
+
     async def fetch_ebusd_data(
         self,
         url: str | None = None,
@@ -343,6 +392,14 @@ class EbusService:
         """Fetches /data from ebusd via HTTP with retry on transient bus collisions/timeouts."""
         target_url = url or self.ebusd_url
         timeout = httpx.Timeout(10.0, connect=5.0)
+
+        # Ensure ebusd has actively polled energy and yield registers
+        try:
+            parsed_host = urlparse(target_url).hostname
+            if parsed_host:
+                await asyncio.to_thread(self._trigger_socket_reads, parsed_host)
+        except Exception as exc:
+            logger.debug("Trigger socket reads failed gracefully: %s", exc)
 
         for attempt in range(1, max_retries + 1):
             try:
