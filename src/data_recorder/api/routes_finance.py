@@ -32,6 +32,8 @@ class StockPriceItemResponse(BaseModel):
     wkn: str | None = None
     name: str | None = None
     ticker: str | None = None
+    depot: str | None = None
+    handelsplatz: str | None = None
     datum: datetime.date
     kurs: float
     wert: float | None = None
@@ -47,6 +49,8 @@ class HoldingItemResponse(BaseModel):
     isin: str | None = None
     name: str | None = None
     ticker: str | None = None
+    depot: str = "cortal_consors"
+    handelsplatz: str = "tradegate"
     anteile: float
     bestand_datum: datetime.date | None = None
     kurs: float | None = None
@@ -63,6 +67,8 @@ class HoldingHistoryItemResponse(BaseModel):
     wkn_id: int
     wkn: str
     name: str | None = None
+    depot: str | None = None
+    handelsplatz: str | None = None
     datum: datetime.date
     anteile: float
     erfasst_am: datetime.datetime
@@ -74,6 +80,34 @@ class CreateHoldingRequest(BaseModel):
     wkn_id: int
     datum: datetime.date
     anteile: Decimal = Field(ge=Decimal("0"), description="Anzahl der Anteile (>= 0)")
+
+
+class EtfItemResponse(BaseModel):
+    """Schema for security master data."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    wkn: str
+    isin: str | None = None
+    name: str | None = None
+    ticker_yahoo: str | None = None
+    typ: str = "ETF"
+    depot: str = "cortal_consors"
+    handelsplatz: str = "tradegate"
+    aktiv: bool = True
+
+
+class UpdateSecurityRequest(BaseModel):
+    """Request payload for updating security master data."""
+
+    name: str | None = None
+    isin: str | None = None
+    ticker_yahoo: str | None = None
+    typ: str | None = None
+    depot: str | None = None
+    handelsplatz: str | None = None
+    aktiv: bool | None = None
 
 
 class UpdatePricesResponse(BaseModel):
@@ -131,6 +165,8 @@ def _serialize_stock_record(record: WknKursDatum) -> StockPriceItemResponse:
     wkn = record.etf.wkn if record.etf else None
     name = record.etf.name if record.etf else None
     ticker = record.etf.ticker_yahoo if record.etf else None
+    depot = record.etf.depot if record.etf else None
+    handelsplatz = record.etf.handelsplatz if record.etf else None
     kurs_val = float(record.kurs)
 
     return StockPriceItemResponse(
@@ -139,6 +175,8 @@ def _serialize_stock_record(record: WknKursDatum) -> StockPriceItemResponse:
         wkn=wkn,
         name=name,
         ticker=ticker,
+        depot=depot,
+        handelsplatz=handelsplatz,
         datum=record.datum,
         kurs=kurs_val,
         wert=kurs_val,
@@ -148,35 +186,36 @@ def _serialize_stock_record(record: WknKursDatum) -> StockPriceItemResponse:
 @api_router.post(
     "/update-prices",
     response_model=UpdatePricesResponse,
-    summary="Manueller Tradegate-Kursabfrage Trigger",
+    summary="Manueller Kursabfrage Trigger",
     description=(
-        "Ermittelt für alle aktiven Wertpapiere mit Yahoo-Ticker (.TG) "
+        "Ermittelt für alle aktiven Wertpapiere (optional gefiltert nach Depot) "
         "den aktuellen Schlusskurs und speichert ihn idempotent in wkn_kurs_datum."
     ),
 )
 async def update_prices(
+    depot: str | None = None,
     session: Session = Depends(get_wertpapiere_db),
 ) -> Any:
-    """Manuell ausgelöste Kursaktualisierung für alle aktiven Wertpapiere."""
+    """Manuell ausgelöste Kursaktualisierung für alle aktiven Wertpapiere (optional nach Depot)."""
     service = StockPriceService()
-    active_securities = service.get_active_securities(session)
+    active_securities = service.get_active_securities(session, depot=depot)
 
     if not active_securities:
         return UpdatePricesResponse(
             status="ok",
-            message="Keine aktiven Wertpapiere mit Yahoo-Ticker vorhanden.",
+            message="Keine aktiven Wertpapiere zur Kursabfrage vorhanden.",
             updated_count=0,
             data=[],
         )
 
-    records = await service.poll_and_save(session=session)
+    records = await service.poll_and_save(session=session, depot=depot)
 
     if not records:
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content={
                 "status": "error",
-                "message": "Keine Kurse von Yahoo Finance ermittelt (Anbieter nicht erreichbar oder keine Kursdaten erhalten).",
+                "message": "Keine Kurse von Kursanbietern ermittelt (Anbieter nicht erreichbar oder keine Kursdaten erhalten).",
                 "updated_count": 0,
                 "data": [],
             },
@@ -239,6 +278,97 @@ async def get_latest_prices(
     return [_serialize_stock_record(r) for r in records]
 
 
+@api_router.get(
+    "/securities",
+    response_model=list[EtfItemResponse],
+    summary="Wertpapier-Stammdatenliste",
+    description="Liefert alle erfassten Wertpapiere (optional gefiltert nach Depot oder Aktivitätsstatus).",
+)
+async def get_securities(
+    depot: str | None = None,
+    aktiv_only: bool = False,
+    session: Session = Depends(get_wertpapiere_db),
+) -> Any:
+    """Liefert alle Stammdaten der Wertpapiere inkl. Depot und Handelsplatz."""
+    stmt = select(Etf).order_by(Etf.id)
+    if aktiv_only:
+        stmt = stmt.where(Etf.aktiv.is_(True))
+    if depot and depot.strip() and depot.strip().lower() not in ("all", "gesamt"):
+        stmt = stmt.where(Etf.depot == depot.strip())
+
+    securities = session.execute(stmt).scalars().all()
+    return [
+        EtfItemResponse(
+            id=s.id,
+            wkn=s.wkn,
+            isin=s.isin,
+            name=s.name,
+            ticker_yahoo=s.ticker_yahoo,
+            typ=s.typ,
+            depot=s.depot,
+            handelsplatz=s.handelsplatz,
+            aktiv=s.aktiv,
+        )
+        for s in securities
+    ]
+
+
+@api_router.put(
+    "/securities/{wkn_id}",
+    response_model=EtfItemResponse,
+    summary="Wertpapier-Stammdaten aktualisieren",
+    description="Aktualisiert Stammdaten wie Name, ISIN, Ticker, Depot und Handelsplatz eines Wertpapiers.",
+)
+@api_router.post(
+    "/securities/{wkn_id}",
+    response_model=EtfItemResponse,
+    summary="Wertpapier-Stammdaten aktualisieren (POST-Alias)",
+    include_in_schema=False,
+)
+async def update_security(
+    wkn_id: int,
+    request: UpdateSecurityRequest,
+    session: Session = Depends(get_wertpapiere_db),
+) -> Any:
+    """Aktualisiert Stammdaten für ein Wertpapier."""
+    etf = session.get(Etf, wkn_id)
+    if not etf:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Wertpapier mit ID {wkn_id} nicht gefunden.",
+        )
+
+    if request.name is not None:
+        etf.name = request.name
+    if request.isin is not None:
+        etf.isin = request.isin.strip().upper() if request.isin.strip() else None
+    if request.ticker_yahoo is not None:
+        etf.ticker_yahoo = request.ticker_yahoo.strip() if request.ticker_yahoo.strip() else None
+    if request.typ is not None:
+        etf.typ = request.typ
+    if request.depot is not None:
+        etf.depot = request.depot.strip().lower()
+    if request.handelsplatz is not None:
+        etf.handelsplatz = request.handelsplatz.strip().lower()
+    if request.aktiv is not None:
+        etf.aktiv = request.aktiv
+
+    session.commit()
+    session.refresh(etf)
+
+    return EtfItemResponse(
+        id=etf.id,
+        wkn=etf.wkn,
+        isin=etf.isin,
+        name=etf.name,
+        ticker_yahoo=etf.ticker_yahoo,
+        typ=etf.typ,
+        depot=etf.depot,
+        handelsplatz=etf.handelsplatz,
+        aktiv=etf.aktiv,
+    )
+
+
 @api_router.post(
     "/scan-hibiscus",
     response_model=ScanHibiscusResponse,
@@ -296,23 +426,24 @@ async def scan_hibiscus(
     response_model=list[HoldingItemResponse],
     summary="Aktuelle Anteilsbestände und Depotübersicht",
     description=(
-        "Liefert alle aktiven Wertpapiere mit ihrem aktuellen Anteilsbestand, "
-        "dem letzten Schlusskurs und dem berechneten Gesamtwert."
+        "Liefert alle aktiven Wertpapiere (optional nach Depot gefiltert) mit ihrem aktuellen "
+        "Anteilsbestand, dem letzten Schlusskurs und dem berechneten Gesamtwert."
     ),
 )
 async def get_holdings(
+    depot: str | None = None,
     session: Session = Depends(get_wertpapiere_db),
 ) -> Any:
     """Gibt die Liste aller aktiven Wertpapiere mit aktuellem Bestand und Kurs zurück."""
-    active_etfs = (
-        session.execute(
-            select(Etf)
-            .where(Etf.aktiv.is_(True))
-            .order_by(Etf.id)
-        )
-        .scalars()
-        .all()
+    stmt = (
+        select(Etf)
+        .where(Etf.aktiv.is_(True))
+        .order_by(Etf.id)
     )
+    if depot and depot.strip() and depot.strip().lower() not in ("all", "gesamt"):
+        stmt = stmt.where(Etf.depot == depot.strip())
+
+    active_etfs = session.execute(stmt).scalars().all()
 
     if not active_etfs:
         return []
@@ -371,6 +502,8 @@ async def get_holdings(
                 isin=etf.isin,
                 name=etf.name,
                 ticker=etf.ticker_yahoo,
+                depot=etf.depot,
+                handelsplatz=etf.handelsplatz,
                 anteile=anteile,
                 bestand_datum=bestand_datum,
                 kurs=kurs,
@@ -408,6 +541,8 @@ async def get_holdings_history(
             wkn_id=r.wkn_id,
             wkn=r.etf.wkn if r.etf else "",
             name=r.etf.name if r.etf else None,
+            depot=r.etf.depot if r.etf else None,
+            handelsplatz=r.etf.handelsplatz if r.etf else None,
             datum=r.datum,
             anteile=float(r.anteile),
             erfasst_am=r.erfasst_am,
@@ -458,6 +593,8 @@ async def create_or_update_holding(
         wkn_id=record.wkn_id,
         wkn=etf.wkn,
         name=etf.name,
+        depot=etf.depot,
+        handelsplatz=etf.handelsplatz,
         datum=record.datum,
         anteile=float(record.anteile),
         erfasst_am=record.erfasst_am,
@@ -531,18 +668,49 @@ def format_date_de(d: datetime.date | datetime.datetime | str | None) -> str:
     return d.strftime("%d.%m.%Y")
 
 
+def format_depot_name_de(depot: str | None) -> str:
+    """Formats internal depot key into user-friendly name."""
+    if not depot:
+        return "Consorsbank"
+    d = depot.lower()
+    if d == "scalable_capital":
+        return "Scalable Capital"
+    elif d in ("cortal_consors", "consorsbank"):
+        return "Consorsbank"
+    return depot.replace("_", " ").title()
+
+
+def format_handelsplatz_de(platz: str | None) -> str:
+    """Formats internal exchange key into user-friendly name."""
+    if not platz:
+        return "Tradegate"
+    p = platz.lower()
+    if p == "tradegate":
+        return "Tradegate"
+    elif p == "gettex":
+        return "gettex"
+    elif p == "xetra":
+        return "Xetra"
+    elif p == "stuttgart":
+        return "Stuttgart"
+    return platz.upper()
+
+
 templates.env.filters["currency_de"] = format_currency_de
 templates.env.filters["number_de"] = format_number_de
 templates.env.filters["date_de"] = format_date_de
+templates.env.filters["depot_name_de"] = format_depot_name_de
+templates.env.filters["handelsplatz_de"] = format_handelsplatz_de
 
 
 @router.get("/depot", response_class=HTMLResponse, summary="Depotübersicht und Anteilsverwaltung")
 async def get_depot_page(
     request: Request,
+    depot: str | None = None,
     session: Session = Depends(get_wertpapiere_db),
 ) -> HTMLResponse:
-    """Rendert die Depot-Übersichtsseite mit Anteilsbeständen, Kurswerten und Historie."""
-    holdings = await get_holdings(session=session)
+    """Rendert die Depot-Übersichtsseite mit Anteilsbeständen, Kurswerten, Depotfiltern und Historie."""
+    holdings = await get_holdings(depot=depot, session=session)
     history = await get_holdings_history(wkn_id=None, session=session)
 
     total_depotwert = round(sum(h.gesamtwert for h in holdings), 2)
@@ -567,6 +735,7 @@ async def get_depot_page(
             "total_depotwert": total_depotwert,
             "latest_kurs_datum": latest_kurs_datum,
             "latest_bestand_datum": latest_bestand_datum,
+            "selected_depot": depot or "all",
             "today_date": today.isoformat(),
         },
     )

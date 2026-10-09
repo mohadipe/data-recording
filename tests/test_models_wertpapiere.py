@@ -38,6 +38,8 @@ def test_etf_crud(db_session: Session):
         name="iShares Core MSCI World UCITS ETF",
         ticker_yahoo="EUNL.DE",
         typ="ETF",
+        depot="scalable_capital",
+        handelsplatz="gettex",
         aktiv=True,
     )
     db_session.add(etf)
@@ -49,14 +51,21 @@ def test_etf_crud(db_session: Session):
     assert saved.name == "iShares Core MSCI World UCITS ETF"
     assert saved.ticker_yahoo == "EUNL.DE"
     assert saved.typ == "ETF"
+    assert saved.depot == "scalable_capital"
+    assert saved.handelsplatz == "gettex"
     assert saved.aktiv is True
 
     assert repr(saved).startswith("<Etf")
+    assert "scalable_capital" in repr(saved)
 
     # Update
     saved.ticker_yahoo = "EUNL.TG"
+    saved.depot = "cortal_consors"
+    saved.handelsplatz = "tradegate"
     db_session.commit()
     assert db_session.get(Etf, saved.id).ticker_yahoo == "EUNL.TG"
+    assert db_session.get(Etf, saved.id).depot == "cortal_consors"
+    assert db_session.get(Etf, saved.id).handelsplatz == "tradegate"
 
     # Delete
     db_session.delete(saved)

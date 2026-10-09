@@ -110,12 +110,11 @@ def test_update_prices_endpoint_yahoo_api_failure(client: TestClient, db_session
         new_callable=AsyncMock,
     ) as mock_poll:
         mock_poll.return_value = []
-
         response = client.post("/api/finance/update-prices")
         assert response.status_code == 502
         data = response.json()
         assert data["status"] == "error"
-        assert "Yahoo Finance" in data["message"]
+        assert "Kursanbietern" in data["message"]
 
 
 def test_get_latest_prices_endpoint(client: TestClient, db_session: Session):
@@ -391,3 +390,54 @@ def test_holdings_history_endpoint(client: TestClient, db_session: Session):
     assert len(filtered_items) == 1
     assert filtered_items[0]["wkn_id"] == etf2.id
     assert filtered_items[0]["anteile"] == 5.0
+
+
+def test_holdings_depot_filter_and_securities_crud(client: TestClient, db_session: Session):
+    """Tests depot filtering on /holdings and /securities CRUD."""
+    sec1 = Etf(
+        wkn="A0RPWH",
+        isin="IE00B4L5Y983",
+        name="MSCI World",
+        depot="cortal_consors",
+        handelsplatz="tradegate",
+        aktiv=True,
+    )
+    sec2 = Etf(
+        wkn="A1T8FV",
+        isin="IE00B8GKDB10",
+        name="High Div",
+        depot="scalable_capital",
+        handelsplatz="gettex",
+        aktiv=True,
+    )
+    db_session.add_all([sec1, sec2])
+    db_session.commit()
+
+    # 1. Test GET /api/finance/holdings?depot=scalable_capital
+    resp_scalable = client.get("/api/finance/holdings?depot=scalable_capital")
+    assert resp_scalable.status_code == 200
+    items_sc = resp_scalable.json()
+    assert len(items_sc) == 1
+    assert items_sc[0]["wkn"] == "A1T8FV"
+    assert items_sc[0]["depot"] == "scalable_capital"
+    assert items_sc[0]["handelsplatz"] == "gettex"
+
+    # 2. Test GET /api/finance/securities
+    resp_sec = client.get("/api/finance/securities")
+    assert resp_sec.status_code == 200
+    secs = resp_sec.json()
+    assert len(secs) == 2
+
+    # 3. Test PUT /api/finance/securities/{wkn_id}
+    update_payload = {
+        "depot": "scalable_capital",
+        "handelsplatz": "xetra",
+        "name": "MSCI World Scalable",
+    }
+    resp_upd = client.put(f"/api/finance/securities/{sec1.id}", json=update_payload)
+    assert resp_upd.status_code == 200
+    updated_sec = resp_upd.json()
+    assert updated_sec["depot"] == "scalable_capital"
+    assert updated_sec["handelsplatz"] == "xetra"
+    assert updated_sec["name"] == "MSCI World Scalable"
+

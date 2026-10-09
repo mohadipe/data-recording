@@ -32,6 +32,12 @@ class Etf(Base):
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ticker_yahoo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     typ: Mapped[str] = mapped_column(String(50), nullable=False, default="ETF")
+    depot: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="cortal_consors", index=True
+    )
+    handelsplatz: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="tradegate"
+    )
     aktiv: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     invest_daten: Mapped[list["WknInvestDatum"]] = relationship(
@@ -61,7 +67,11 @@ class Etf(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Etf(id={self.id}, wkn='{self.wkn}', name='{self.name}', ticker='{self.ticker_yahoo}', aktiv={self.aktiv})>"
+        return (
+            f"<Etf(id={self.id}, wkn='{self.wkn}', name='{self.name}', "
+            f"depot='{self.depot}', handelsplatz='{self.handelsplatz}', "
+            f"ticker='{self.ticker_yahoo}', aktiv={self.aktiv})>"
+        )
 
 
 class WknInvestDatum(Base):

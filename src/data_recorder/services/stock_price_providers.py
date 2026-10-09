@@ -126,6 +126,174 @@ class TradegateProvider:
         )
 
 
+class GettexProvider:
+    """Provider for gettex / Börse München quotes (Scalable Capital standard exchange)."""
+
+    name: str = "gettex"
+
+    def __init__(self, timeout: float = 10.0) -> None:
+        self.timeout = timeout
+
+    def fetch_price_sync(
+        self,
+        wkn: str,
+        isin: str | None = None,
+        ticker: str | None = None,
+        target_date: datetime.date | None = None,
+    ) -> tuple[Decimal, datetime.date, str] | None:
+        """Fetches closing price for gettex / Börse München."""
+        candidates = []
+        if ticker:
+            clean_ticker = ticker.strip()
+            # If ticker has another exchange suffix like .TG or .DE, generate .MU candidate
+            if "." in clean_ticker:
+                base = clean_ticker.split(".")[0]
+                candidates.append(f"{base}.MU")
+                candidates.append(f"{base}.HM")
+                candidates.append(clean_ticker)
+            else:
+                candidates.append(f"{clean_ticker}.MU")
+                candidates.append(clean_ticker)
+        
+        if isin:
+            candidates.append(isin.strip())
+
+        for cand in candidates:
+            try:
+                yf_ticker = yf.Ticker(cand)
+                hist = yf_ticker.history(period="5d")
+                if hist is None or hist.empty:
+                    continue
+
+                close_col = next(
+                    (c for c in hist.columns if str(c).lower() == "close"), None
+                )
+                if close_col is None:
+                    continue
+
+                if target_date is not None:
+                    matching = hist[hist.index.date == target_date]
+                    if matching.empty:
+                        continue
+                    row = matching.iloc[-1]
+                    quote_date = target_date
+                else:
+                    row = hist.iloc[-1]
+                    quote_date = hist.index[-1].date()
+
+                raw_price = row[close_col]
+                if raw_price is None or pd_is_na(raw_price):
+                    continue
+
+                price = Decimal(str(round(float(raw_price), 4)))
+                if price <= Decimal("0"):
+                    continue
+
+                return price, quote_date, self.name
+            except Exception as exc:
+                logger.debug("GettexProvider candidate '%s' failed: %s", cand, exc)
+
+        logger.warning(
+            "GettexProvider: Kein Kurs für WKN=%s, ISIN=%s, Ticker=%s ermittelt.",
+            wkn,
+            isin,
+            ticker,
+        )
+        return None
+
+    async def fetch_price(
+        self,
+        wkn: str,
+        isin: str | None = None,
+        ticker: str | None = None,
+        target_date: datetime.date | None = None,
+    ) -> tuple[Decimal, datetime.date, str] | None:
+        return await asyncio.to_thread(
+            self.fetch_price_sync, wkn, isin, ticker, target_date
+        )
+
+
+class XetraProvider:
+    """Provider for Deutsche Börse Xetra quotes (.DE)."""
+
+    name: str = "xetra"
+
+    def __init__(self, timeout: float = 10.0) -> None:
+        self.timeout = timeout
+
+    def fetch_price_sync(
+        self,
+        wkn: str,
+        isin: str | None = None,
+        ticker: str | None = None,
+        target_date: datetime.date | None = None,
+    ) -> tuple[Decimal, datetime.date, str] | None:
+        candidates = []
+        if ticker:
+            clean = ticker.strip()
+            if "." in clean:
+                base = clean.split(".")[0]
+                candidates.append(f"{base}.DE")
+                candidates.append(clean)
+            else:
+                candidates.append(f"{clean}.DE")
+                candidates.append(clean)
+
+        for cand in candidates:
+            try:
+                yf_ticker = yf.Ticker(cand)
+                hist = yf_ticker.history(period="5d")
+                if hist is None or hist.empty:
+                    continue
+
+                close_col = next(
+                    (c for c in hist.columns if str(c).lower() == "close"), None
+                )
+                if close_col is None:
+                    continue
+
+                if target_date is not None:
+                    matching = hist[hist.index.date == target_date]
+                    if matching.empty:
+                        continue
+                    row = matching.iloc[-1]
+                    quote_date = target_date
+                else:
+                    row = hist.iloc[-1]
+                    quote_date = hist.index[-1].date()
+
+                raw_price = row[close_col]
+                if raw_price is None or pd_is_na(raw_price):
+                    continue
+
+                price = Decimal(str(round(float(raw_price), 4)))
+                if price <= Decimal("0"):
+                    continue
+
+                return price, quote_date, self.name
+            except Exception as exc:
+                logger.debug("XetraProvider candidate '%s' failed: %s", cand, exc)
+
+        logger.warning(
+            "XetraProvider: Kein Kurs für WKN=%s, ISIN=%s, Ticker=%s ermittelt.",
+            wkn,
+            isin,
+            ticker,
+        )
+        return None
+
+    async def fetch_price(
+        self,
+        wkn: str,
+        isin: str | None = None,
+        ticker: str | None = None,
+        target_date: datetime.date | None = None,
+    ) -> tuple[Decimal, datetime.date, str] | None:
+        return await asyncio.to_thread(
+            self.fetch_price_sync, wkn, isin, ticker, target_date
+        )
+
+
 class YahooFinanceProvider:
     """Fallback provider: Queries historical closing prices via Yahoo Finance API (yfinance)."""
 
@@ -231,3 +399,4 @@ def pd_is_na(val: Any) -> bool:
         return math.isnan(float(val))
     except (TypeError, ValueError):
         return False
+

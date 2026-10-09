@@ -8,6 +8,7 @@
 --        - Aktuellen Gesamtwert (Anteile * Kurs), mit Fallback auf historischen
 --          Snapshot aus wkn_wert_datum falls Anteile oder Kurs fehlen
 --        - Gesamt-Investitionen, Gesamt-Erträge sowie absolute und prozentuale Rendite.
+--        - Depot (cortal_consors / scalable_capital) und Handelsplatz (tradegate, gettex, xetra, stuttgart).
 -- ==============================================================================
 
 USE wertpapiere;
@@ -58,6 +59,8 @@ portfolio_base AS (
         e.name,
         e.ticker_yahoo,
         e.typ,
+        COALESCE(e.depot, 'cortal_consors') AS depot,
+        COALESCE(e.handelsplatz, 'tradegate') AS handelsplatz,
         e.aktiv,
         CASE 
             WHEN lb.anteile IS NOT NULL AND lk.kurs IS NOT NULL THEN lk.datum
@@ -91,6 +94,8 @@ SELECT
     name,
     ticker_yahoo,
     typ,
+    depot,
+    handelsplatz,
     aktiv,
     letzter_stichtag,
     aktueller_kurs,

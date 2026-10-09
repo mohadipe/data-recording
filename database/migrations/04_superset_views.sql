@@ -298,6 +298,8 @@ perf_base AS (
         e.name,
         e.ticker_yahoo,
         e.typ,
+        COALESCE(e.depot, 'cortal_consors') AS depot,
+        COALESCE(e.handelsplatz, 'tradegate') AS handelsplatz,
         e.aktiv,
         cd.kurs,
         cd.anteile,
@@ -324,6 +326,8 @@ SELECT
     name,
     ticker_yahoo,
     typ,
+    depot,
+    handelsplatz,
     aktiv,
     kurs,
     anteile,
@@ -388,6 +392,8 @@ portfolio_base AS (
         e.name,
         e.ticker_yahoo,
         e.typ,
+        COALESCE(e.depot, 'cortal_consors') AS depot,
+        COALESCE(e.handelsplatz, 'tradegate') AS handelsplatz,
         e.aktiv,
         CASE 
             WHEN lb.anteile IS NOT NULL AND lk.kurs IS NOT NULL THEN lk.datum
@@ -421,6 +427,8 @@ SELECT
     name,
     ticker_yahoo,
     typ,
+    depot,
+    handelsplatz,
     aktiv,
     letzter_stichtag,
     aktueller_kurs,
@@ -438,3 +446,4 @@ SELECT
         END, 2
     ) AS rendite_gesamt_prozent
 FROM portfolio_base;
+

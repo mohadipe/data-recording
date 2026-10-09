@@ -12,8 +12,10 @@ from data_recorder.core.config import Settings, get_settings
 from data_recorder.core.database import get_db_session
 from data_recorder.models.wertpapiere import Etf, WknKursDatum
 from data_recorder.services.stock_price_providers import (
+    GettexProvider,
     StockPriceProvider,
     TradegateProvider,
+    XetraProvider,
     YahooFinanceProvider,
 )
 
@@ -64,7 +66,7 @@ class StockPriceResult:
 
 
 class StockPriceService:
-    """Service to fetch stock and ETF closing prices via Tradegate (Primary) and Yahoo Finance (Fallback) and persist them into MySQL."""
+    """Service to fetch stock and ETF closing prices via Tradegate / gettex / Xetra / Yahoo Finance and persist them into MySQL."""
 
     def __init__(
         self,
@@ -72,13 +74,44 @@ class StockPriceService:
         providers: list[StockPriceProvider] | None = None,
     ) -> None:
         self.settings = settings or get_settings()
-        self.providers: list[StockPriceProvider] = (
+        self.custom_providers: list[StockPriceProvider] | None = providers
+        self.default_providers: list[StockPriceProvider] = (
             providers
             if providers is not None
-            else [TradegateProvider(), YahooFinanceProvider()]
+            else [TradegateProvider(), GettexProvider(), YahooFinanceProvider()]
         )
 
-    def get_active_securities(self, session: Session) -> list[Etf]:
+    @property
+    def providers(self) -> list[StockPriceProvider]:
+        return self.default_providers
+
+    def get_providers_for_security(
+        self,
+        sec: Etf | None = None,
+        handelsplatz: str | None = None,
+        depot: str | None = None,
+    ) -> list[StockPriceProvider]:
+        """Returns prioritized provider chain for the specific security based on handelsplatz/depot."""
+        if self.custom_providers is not None:
+            return self.custom_providers
+
+        h_platz = (handelsplatz or (sec.handelsplatz if sec else "") or "").lower().strip()
+        d_pot = (depot or (sec.depot if sec else "") or "").lower().strip()
+
+        if h_platz == "gettex" or (d_pot == "scalable_capital" and h_platz in ("", "gettex")):
+            return [GettexProvider(), TradegateProvider(), YahooFinanceProvider()]
+        elif h_platz == "xetra":
+            return [XetraProvider(), TradegateProvider(), YahooFinanceProvider()]
+        elif h_platz == "stuttgart":
+            return [YahooFinanceProvider(), TradegateProvider()]
+        elif h_platz == "tradegate" or d_pot == "cortal_consors":
+            return [TradegateProvider(), YahooFinanceProvider()]
+        else:
+            return [TradegateProvider(), GettexProvider(), YahooFinanceProvider()]
+
+    def get_active_securities(
+        self, session: Session, depot: str | None = None
+    ) -> list[Etf]:
         """Returns all active securities from wertpapiere.etf that have at least ISIN, WKN or Ticker set."""
         stmt = (
             select(Etf)
@@ -92,6 +125,9 @@ class StockPriceService:
             )
             .order_by(Etf.id)
         )
+        if depot and depot.strip() and depot.strip().lower() not in ("all", "gesamt"):
+            stmt = stmt.where(Etf.depot == depot.strip())
+
         candidates = session.execute(stmt).scalars().all()
         return [
             sec
@@ -108,12 +144,17 @@ class StockPriceService:
         *,
         wkn: str = "",
         isin: str | None = None,
+        handelsplatz: str | None = None,
+        depot: str | None = None,
     ) -> tuple[Decimal, datetime.date, str] | None:
         """Synchronously queries the provider chain for price data.
 
         Returns (price, quote_date, source_provider_name) or None.
         """
-        for provider in self.providers:
+        provider_chain = self.get_providers_for_security(
+            handelsplatz=handelsplatz, depot=depot
+        )
+        for provider in provider_chain:
             try:
                 if hasattr(provider, "fetch_price_sync"):
                     result = provider.fetch_price_sync(  # type: ignore[attr-defined]
@@ -155,9 +196,14 @@ class StockPriceService:
         *,
         wkn: str = "",
         isin: str | None = None,
+        handelsplatz: str | None = None,
+        depot: str | None = None,
     ) -> tuple[Decimal, datetime.date, str] | None:
         """Asynchronously queries the provider chain for price data."""
-        for provider in self.providers:
+        provider_chain = self.get_providers_for_security(
+            handelsplatz=handelsplatz, depot=depot
+        )
+        for provider in provider_chain:
             try:
                 result = await provider.fetch_price(
                     wkn=wkn,
@@ -217,10 +263,13 @@ class StockPriceService:
         return record
 
     async def _process_securities(
-        self, session: Session, target_date: datetime.date | None = None
+        self,
+        session: Session,
+        target_date: datetime.date | None = None,
+        depot: str | None = None,
     ) -> list[WknKursDatum]:
-        """Iterates over active securities, fetches quotes via Tradegate/Yahoo providers, and persists them."""
-        securities = self.get_active_securities(session)
+        """Iterates over active securities, fetches quotes via specific exchange providers, and persists them."""
+        securities = self.get_active_securities(session, depot=depot)
         if not securities:
             logger.info("Keine aktiven Wertpapiere zur Kursabfrage vorhanden.")
             return []
@@ -233,14 +282,18 @@ class StockPriceService:
                     target_date=target_date,
                     wkn=sec.wkn,
                     isin=sec.isin,
+                    handelsplatz=sec.handelsplatz,
+                    depot=sec.depot,
                 )
                 if fetch_result is None:
                     logger.warning(
-                        "Konnte für WKN %s (%s, ISIN: %s, Ticker: %s) über keinen Provider einen Kurs ermitteln.",
+                        "Konnte für WKN %s (%s, ISIN: %s, Ticker: %s, Depot: %s, Platz: %s) über keinen Provider einen Kurs ermitteln.",
                         sec.wkn,
                         sec.name,
                         sec.isin,
                         sec.ticker_yahoo,
+                        sec.depot,
+                        sec.handelsplatz,
                     )
                     continue
 
@@ -254,10 +307,12 @@ class StockPriceService:
                 record.etf = sec
                 saved_records.append(record)
                 logger.info(
-                    "Kurs für WKN %s (%s, ISIN: %s) via %s am %s erfolgreich gespeichert: %s €",
+                    "Kurs für WKN %s (%s, ISIN: %s, Depot: %s, Platz: %s) via %s am %s erfolgreich gespeichert: %s €",
                     sec.wkn,
                     sec.name or sec.wkn,
                     sec.isin or "-",
+                    sec.depot,
+                    sec.handelsplatz,
                     source_name,
                     quote_date,
                     price,
@@ -278,12 +333,17 @@ class StockPriceService:
         self,
         session: Session | None = None,
         target_date: datetime.date | None = None,
+        depot: str | None = None,
     ) -> list[WknKursDatum]:
         """Main entry point to fetch and persist quotes for all active securities."""
         if session is not None:
-            return await self._process_securities(session, target_date=target_date)
+            return await self._process_securities(
+                session, target_date=target_date, depot=depot
+            )
 
         for db in get_db_session("wertpapiere"):
-            return await self._process_securities(db, target_date=target_date)
+            return await self._process_securities(
+                db, target_date=target_date, depot=depot
+            )
 
         return []

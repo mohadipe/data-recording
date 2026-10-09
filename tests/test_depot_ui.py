@@ -229,6 +229,48 @@ def test_depot_empty_state(client: TestClient, db_session: Session):
     assert "Noch keine Bestandshistorie" in html
 
 
+def test_depot_tabs_badges_and_filtering(client: TestClient, db_session: Session):
+    """Verify depot tabs, badges, and URL parameter filtering."""
+    etf1 = Etf(
+        id=1,
+        wkn="A0RPWH",
+        name="iShares Core MSCI World",
+        depot="cortal_consors",
+        handelsplatz="tradegate",
+        aktiv=True,
+    )
+    etf2 = Etf(
+        id=2,
+        wkn="A1T8FV",
+        name="High Div Scalable",
+        depot="scalable_capital",
+        handelsplatz="gettex",
+        aktiv=True,
+    )
+    db_session.add_all([etf1, etf2])
+    db_session.commit()
+
+    # 1. Check all depot view
+    resp_all = client.get("/depot")
+    assert resp_all.status_code == 200
+    html_all = resp_all.text
+    assert "Consorsbank" in html_all
+    assert "Scalable Capital" in html_all
+    assert "gettex" in html_all
+    assert "Tradegate" in html_all
+    assert 'data-depot-filter="all"' in html_all
+    assert 'data-depot-filter="cortal_consors"' in html_all
+    assert 'data-depot-filter="scalable_capital"' in html_all
+
+    # 2. Check filtered by Scalable Capital
+    resp_sc = client.get("/depot?depot=scalable_capital")
+    assert resp_sc.status_code == 200
+    html_sc = resp_sc.text
+    assert "High Div Scalable" in html_sc
+    assert "iShares Core MSCI World" not in html_sc
+    assert "Scalable Capital Depotwert" in html_sc
+
+
 def test_format_number_de_sign_handling():
     """Verify format_number_de preserves negative sign on fractions between -1 and 0."""
     from data_recorder.api.routes_finance import format_number_de
@@ -236,5 +278,6 @@ def test_format_number_de_sign_handling():
     assert format_number_de(Decimal("-0.05"), decimals=2) == "-0,05"
     assert format_number_de(Decimal("0"), decimals=2) == "0,00"
     assert format_number_de(Decimal("12.3456"), decimals=4) == "12,3456"
+
 
 

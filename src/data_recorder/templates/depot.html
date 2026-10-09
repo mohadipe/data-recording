@@ -5,15 +5,31 @@
 {% block content %}
 <div class="flex-1 flex flex-col space-y-5" id="depot-app">
     <!-- Header mit Titel und Aktions-Button -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
             <h2 class="text-lg font-bold text-slate-100">Depot-Verwaltung</h2>
-            <p class="text-xs text-slate-400">Anteilsbestände & Tradegate-Kurse</p>
+            <p class="text-xs text-slate-400">Multi-Depot Anteilsbestände, Handelsplätze & Kurse</p>
         </div>
         <button type="button" id="btn-open-holding-modal"
-            class="bg-brand-600 hover:bg-brand-500 active:scale-95 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg shadow-brand-600/30 transition flex items-center space-x-1.5">
+            class="bg-brand-600 hover:bg-brand-500 active:scale-95 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg shadow-brand-600/30 transition flex items-center justify-center space-x-1.5 self-start sm:self-auto">
             <span>+</span>
             <span>Bestand erfassen</span>
+        </button>
+    </div>
+
+    <!-- Depot Filter Tabs -->
+    <div class="flex items-center space-x-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+        <button type="button" class="depot-tab-btn flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition text-center {% if selected_depot == 'all' %}bg-brand-600 text-white shadow-md shadow-brand-600/30{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800/60{% endif %}"
+            data-depot-filter="all">
+            Gesamt
+        </button>
+        <button type="button" class="depot-tab-btn flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition text-center {% if selected_depot == 'cortal_consors' %}bg-brand-600 text-white shadow-md shadow-brand-600/30{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800/60{% endif %}"
+            data-depot-filter="cortal_consors">
+            Consorsbank
+        </button>
+        <button type="button" class="depot-tab-btn flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition text-center {% if selected_depot == 'scalable_capital' %}bg-brand-600 text-white shadow-md shadow-brand-600/30{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800/60{% endif %}"
+            data-depot-filter="scalable_capital">
+            Scalable Capital
         </button>
     </div>
 
@@ -27,11 +43,19 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <!-- KPI: Gesamt-Depotwert -->
         <div class="bg-gradient-to-br from-slate-800/90 to-slate-800/40 border border-slate-700/80 rounded-2xl p-4 shadow-sm">
-            <span class="text-xs font-semibold text-slate-400 block mb-1">Gesamt-Depotwert</span>
-            <div class="text-2xl font-black text-emerald-400 tracking-tight font-mono">
+            <span class="text-xs font-semibold text-slate-400 block mb-1" id="kpi-depotwert-label">
+                {% if selected_depot == 'cortal_consors' %}
+                    Consorsbank Depotwert
+                {% elif selected_depot == 'scalable_capital' %}
+                    Scalable Capital Depotwert
+                {% else %}
+                    Gesamt-Depotwert
+                {% endif %}
+            </span>
+            <div class="text-2xl font-black text-emerald-400 tracking-tight font-mono" id="kpi-total-depotwert">
                 {{ total_depotwert|currency_de }}
             </div>
-            <span class="text-[11px] text-slate-500 mt-1 block">Summe aller aktiven Positionen</span>
+            <span class="text-[11px] text-slate-500 mt-1 block" id="kpi-depotwert-subtitle">Summe aller aktiven Positionen</span>
         </div>
 
         <!-- KPI: Letzte Kursaktualisierung & Trigger -->
@@ -60,21 +84,23 @@
     <div class="space-y-3">
         <div class="flex items-center justify-between border-b border-slate-800 pb-2">
             <h3 class="text-sm font-bold text-slate-200">Aktive Wertpapiere</h3>
-            <span class="text-xs text-slate-400 bg-slate-800/80 border border-slate-700/60 px-2 py-0.5 rounded-full font-mono font-medium">
+            <span class="text-xs text-slate-400 bg-slate-800/80 border border-slate-700/60 px-2 py-0.5 rounded-full font-mono font-medium" id="holdings-count-badge">
                 {{ holdings|length }} Position(en)
             </span>
         </div>
 
-        {% if holdings|length == 0 %}
-        <div class="bg-slate-800/40 border border-dashed border-slate-700/70 rounded-2xl p-6 text-center text-slate-400 text-xs">
-            Keine aktiven Wertpapiere in der Datenbank konfiguriert.
+        <div id="no-holdings-message" class="{% if holdings|length > 0 %}hidden{% endif %} bg-slate-800/40 border border-dashed border-slate-700/70 rounded-2xl p-6 text-center text-slate-400 text-xs">
+            Keine aktiven Wertpapiere für den ausgewählten Filter vorhanden.
         </div>
-        {% else %}
+
         <div class="space-y-3" id="holdings-list">
             {% for item in holdings %}
-            <div class="bg-slate-800/50 border border-slate-700/80 hover:border-slate-600 rounded-2xl p-4 transition shadow-sm"
+            <div class="holding-card bg-slate-800/50 border border-slate-700/80 hover:border-slate-600 rounded-2xl p-4 transition shadow-sm"
                 data-wkn-id="{{ item.wkn_id }}"
                 data-wkn="{{ item.wkn }}"
+                data-depot="{{ item.depot }}"
+                data-handelsplatz="{{ item.handelsplatz }}"
+                data-gesamtwert="{{ item.gesamtwert }}"
                 data-name="{{ item.name or item.wkn }}">
                 
                 <!-- Oberste Zeile: Badges & Schnellaktion -->
@@ -83,13 +109,40 @@
                         <span class="text-xs font-bold px-2 py-0.5 rounded-md bg-brand-500/20 text-brand-300 border border-brand-500/30 font-mono">
                             {{ item.wkn }}
                         </span>
+                        
+                        <!-- Depot Badge -->
+                        {% if item.depot == 'scalable_capital' %}
+                        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Scalable
+                        </span>
+                        {% else %}
+                        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                            Consors
+                        </span>
+                        {% endif %}
+
+                        <!-- Handelsplatz Badge -->
+                        {% if item.handelsplatz == 'gettex' %}
+                        <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">
+                            gettex
+                        </span>
+                        {% elif item.handelsplatz == 'xetra' %}
+                        <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono">
+                            Xetra
+                        </span>
+                        {% else %}
+                        <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                            Tradegate
+                        </span>
+                        {% endif %}
+
                         {% if item.ticker %}
-                        <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 border border-slate-600/40 font-mono">
+                        <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 border border-slate-600/40 font-mono hidden sm:inline">
                             {{ item.ticker }}
                         </span>
                         {% endif %}
                         {% if item.isin %}
-                        <span class="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                        <span class="text-[11px] text-slate-400 font-mono hidden md:inline">
                             {{ item.isin }}
                         </span>
                         {% endif %}
@@ -152,7 +205,6 @@
             </div>
             {% endfor %}
         </div>
-        {% endif %}
     </div>
 
     <!-- Bestandshistorie Tabelle -->
@@ -230,7 +282,7 @@
                         class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                         {% for item in holdings %}
                         <option value="{{ item.wkn_id }}">
-                            {{ item.name or item.wkn }} ({{ item.wkn }})
+                            {{ item.name or item.wkn }} ({{ item.wkn }}) - {{ item.depot|depot_name_de }}
                         </option>
                         {% else %}
                         <option value="" disabled selected>Keine aktiven Wertpapiere vorhanden</option>
@@ -281,6 +333,79 @@
         const toastBanner = document.getElementById("toast-banner");
         const toastMessage = document.getElementById("toast-message");
         const btnCloseToast = document.getElementById("btn-close-toast");
+
+        let currentDepotFilter = "{{ selected_depot or 'all' }}";
+
+        function formatCurrencyDE(val) {
+            const num = Number(val) || 0;
+            return num.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+        }
+
+        function filterHoldings(filter) {
+            currentDepotFilter = filter;
+            const cards = document.querySelectorAll(".holding-card");
+            let visibleCount = 0;
+            let totalVal = 0;
+
+            cards.forEach(card => {
+                const depot = card.dataset.depot;
+                const matches = (filter === "all" || depot === filter);
+                if (matches) {
+                    card.classList.remove("hidden");
+                    visibleCount++;
+                    totalVal += parseFloat(card.dataset.gesamtwert || "0");
+                } else {
+                    card.classList.add("hidden");
+                }
+            });
+
+            const countBadge = document.getElementById("holdings-count-badge");
+            if (countBadge) {
+                countBadge.textContent = `${visibleCount} Position(en)`;
+            }
+
+            const noHoldingsMsg = document.getElementById("no-holdings-message");
+            if (noHoldingsMsg) {
+                if (visibleCount === 0) {
+                    noHoldingsMsg.classList.remove("hidden");
+                } else {
+                    noHoldingsMsg.classList.add("hidden");
+                }
+            }
+
+            const totalEl = document.getElementById("kpi-total-depotwert");
+            if (totalEl) {
+                totalEl.textContent = formatCurrencyDE(totalVal);
+            }
+
+            const kpiLabel = document.getElementById("kpi-depotwert-label");
+            if (kpiLabel) {
+                if (filter === "cortal_consors") {
+                    kpiLabel.textContent = "Consorsbank Depotwert";
+                } else if (filter === "scalable_capital") {
+                    kpiLabel.textContent = "Scalable Capital Depotwert";
+                } else {
+                    kpiLabel.textContent = "Gesamt-Depotwert";
+                }
+            }
+
+            // Update Tab styles
+            document.querySelectorAll(".depot-tab-btn").forEach(btn => {
+                if (btn.dataset.depotFilter === filter) {
+                    btn.className = "depot-tab-btn flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition text-center bg-brand-600 text-white shadow-md shadow-brand-600/30";
+                } else {
+                    btn.className = "depot-tab-btn flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition text-center text-slate-400 hover:text-slate-200 hover:bg-slate-800/60";
+                }
+            });
+        }
+
+        // Tab click handlers
+        document.querySelectorAll(".depot-tab-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const filter = btn.dataset.depotFilter;
+                filterHoldings(filter);
+            });
+        });
 
         function showToast(msg, isError = false) {
             toastMessage.textContent = msg;
@@ -401,8 +526,12 @@
                 btnUpdatePricesText.textContent = "Kurse werden abgerufen...";
                 iconRefresh.classList.add("animate-spin");
 
+                const url = currentDepotFilter && currentDepotFilter !== "all"
+                    ? `/api/finance/update-prices?depot=${encodeURIComponent(currentDepotFilter)}`
+                    : "/api/finance/update-prices";
+
                 try {
-                    const res = await fetch("/api/finance/update-prices", {
+                    const res = await fetch(url, {
                         method: "POST",
                     });
                     const data = await res.json().catch(() => ({}));

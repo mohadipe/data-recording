@@ -79,6 +79,8 @@ def test_migration_04_superset_views_and_view_files():
     assert "2026-07-16" in view_04
     assert "kurs" in view_04
     assert "anteile" in view_04
+    assert "depot" in view_04
+    assert "handelsplatz" in view_04
 
     # Verify portfolio overview view content
     view_05 = (views_dir / "05_view_portfolio_uebersicht_aktuell.sql").read_text(encoding="utf-8").lower()
@@ -86,11 +88,15 @@ def test_migration_04_superset_views_and_view_files():
     assert "aktueller_bestand" in view_05
     assert "wkn_kurs_datum" in view_05
     assert "wkn_bestand_datum" in view_05
+    assert "depot" in view_05
+    assert "handelsplatz" in view_05
 
     # Verify migration 04 also contains the updated views
     assert "source_id" in content
     assert "aktueller_kurs" in content
     assert "aktueller_bestand" in content
+    assert "depot" in content
+    assert "handelsplatz" in content
 
 
 def test_migration_05_kurs_bestand_exists_and_content():
@@ -134,6 +140,23 @@ def test_migration_06_etf_master_data_isins():
     assert "ie00bj5jny98" in content
     assert "a0rpwh" in content
     assert "a113ff" in content
+
+
+def test_migration_07_wertpapiere_depot_handelsplatz():
+    migration_file = (
+        Path(__file__).parent.parent / "database" / "migrations" / "07_wertpapiere_depot_handelsplatz.sql"
+    )
+    assert migration_file.exists(), f"Migration file {migration_file} does not exist"
+
+    content = migration_file.read_text(encoding="utf-8").lower()
+    assert len(content) > 0
+    assert "alter table wertpapiere.etf" in content
+    assert "depot varchar(50)" in content
+    assert "handelsplatz varchar(50)" in content
+    assert "cortal_consors" in content
+    assert "tradegate" in content
+    assert "idx_etf_depot" in content
+
 
 
 

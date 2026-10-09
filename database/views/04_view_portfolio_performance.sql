@@ -8,6 +8,7 @@
 --           jeweils gültigen Anteilsbeständen aus wkn_bestand_datum.
 --        Berechnet kumulierte Einzahlungen, aktuellen Depotwert, Erträge (Dividenden)
 --        sowie Gesamtrendite in Euro und Prozent.
+--        Unterstützt Depot- und Handelsplatz-Auswertungen (Consorsbank / Scalable Capital).
 -- ==============================================================================
 
 USE wertpapiere;
@@ -59,6 +60,8 @@ perf_base AS (
         e.name,
         e.ticker_yahoo,
         e.typ,
+        COALESCE(e.depot, 'cortal_consors') AS depot,
+        COALESCE(e.handelsplatz, 'tradegate') AS handelsplatz,
         e.aktiv,
         cd.kurs,
         cd.anteile,
@@ -85,6 +88,8 @@ SELECT
     name,
     ticker_yahoo,
     typ,
+    depot,
+    handelsplatz,
     aktiv,
     kurs,
     anteile,

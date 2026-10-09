@@ -278,15 +278,15 @@ def test_save_stock_price_insert_and_idempotent_update(db_session: Session):
 @pytest.mark.asyncio
 async def test_poll_and_save_workflow(db_session: Session):
     """Tests poll_and_save full batch workflow with mock provider."""
-    etf1 = Etf(wkn="A0RPWH", isin="IE00B4L5Y983", name="MSCI World", aktiv=True)
-    etf2 = Etf(wkn="A1T8FV", isin="IE00B8GKDB10", name="High Dividend", aktiv=True)
+    etf1 = Etf(wkn="A0RPWH", isin="IE00B4L5Y983", name="MSCI World", depot="cortal_consors", aktiv=True)
+    etf2 = Etf(wkn="A1T8FV", isin="IE00B8GKDB10", name="High Dividend", depot="scalable_capital", aktiv=True)
     db_session.add_all([etf1, etf2])
     db_session.commit()
 
     mock_provider = MagicMock()
     mock_provider.name = "mock_provider"
 
-    async def mock_fetch(wkn, isin=None, ticker=None, target_date=None):
+    async def mock_fetch(wkn, isin=None, ticker=None, target_date=None, **kwargs):
         if wkn == "A0RPWH":
             return (Decimal("131.75"), datetime.date(2026, 10, 9), "mock_provider")
         elif wkn == "A1T8FV":
@@ -302,3 +302,74 @@ async def test_poll_and_save_workflow(db_session: Session):
     prices = {r.etf.wkn: r.kurs for r in results}
     assert prices["A0RPWH"] == Decimal("131.75")
     assert prices["A1T8FV"] == Decimal("80.96")
+
+    # Test filtering by depot
+    results_scalable = await service.poll_and_save(session=db_session, depot="scalable_capital")
+    assert len(results_scalable) == 1
+    assert results_scalable[0].etf.wkn == "A1T8FV"
+
+
+# ==============================================================================
+# 4. GETTEX & XETRA PROVIDER TESTS & ROUTING
+# ==============================================================================
+
+def test_gettex_provider_success():
+    """Tests GettexProvider candidate ticker handling and price fetch."""
+    from data_recorder.services.stock_price_providers import GettexProvider
+
+    provider = GettexProvider()
+    dates = [datetime.date(2026, 10, 9)]
+    df = _create_mock_history_df(dates, [131.71])
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = df
+
+    with patch("yfinance.Ticker", return_value=mock_ticker) as mock_yf:
+        res = provider.fetch_price_sync(wkn="A0RPWH", ticker="EUNL.DE", isin="IE00B4L5Y983")
+        assert res is not None
+        price, quote_date, source = res
+        assert price == Decimal("131.71")
+        assert source == "gettex"
+        # Verify it tried .MU first
+        mock_yf.assert_any_call("EUNL.MU")
+
+
+def test_xetra_provider_success():
+    """Tests XetraProvider candidate ticker handling and price fetch."""
+    from data_recorder.services.stock_price_providers import XetraProvider
+
+    provider = XetraProvider()
+    dates = [datetime.date(2026, 10, 9)]
+    df = _create_mock_history_df(dates, [131.64])
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = df
+
+    with patch("yfinance.Ticker", return_value=mock_ticker) as mock_yf:
+        res = provider.fetch_price_sync(wkn="A0RPWH", ticker="EUNL.TG", isin="IE00B4L5Y983")
+        assert res is not None
+        price, quote_date, source = res
+        assert price == Decimal("131.64")
+        assert source == "xetra"
+        mock_yf.assert_any_call("EUNL.DE")
+
+
+def test_routing_by_handelsplatz_and_depot():
+    """Tests that get_providers_for_security selects the correct primary provider."""
+    service = StockPriceService()
+
+    # 1. gettex / Scalable Capital
+    etf_scalable = Etf(wkn="A0RPWH", depot="scalable_capital", handelsplatz="gettex")
+    providers_gettex = service.get_providers_for_security(etf_scalable)
+    assert providers_gettex[0].name == "gettex"
+
+    # 2. Xetra
+    etf_xetra = Etf(wkn="A0RPWH", depot="scalable_capital", handelsplatz="xetra")
+    providers_xetra = service.get_providers_for_security(etf_xetra)
+    assert providers_xetra[0].name == "xetra"
+
+    # 3. Tradegate / Consorsbank
+    etf_consors = Etf(wkn="A0RPWH", depot="cortal_consors", handelsplatz="tradegate")
+    providers_tg = service.get_providers_for_security(etf_consors)
+    assert providers_tg[0].name == "tradegate"
+
