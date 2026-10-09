@@ -48,6 +48,7 @@ class HoldingItemResponse(BaseModel):
     wkn: str
     isin: str | None = None
     name: str | None = None
+    typ: str = "ETF"
     ticker: str | None = None
     depot: str = "cortal_consors"
     handelsplatz: str = "tradegate"
@@ -80,6 +81,21 @@ class CreateHoldingRequest(BaseModel):
     wkn_id: int
     datum: datetime.date
     anteile: Decimal = Field(ge=Decimal("0"), description="Anzahl der Anteile (>= 0)")
+
+
+class CreateSecurityRequest(BaseModel):
+    """Request payload for creating a new security (stock, ETF, fund)."""
+
+    wkn: str = Field(..., min_length=1, max_length=255, description="WKN des Wertpapiers")
+    isin: str | None = Field(None, max_length=12, description="12-stellige ISIN")
+    name: str | None = Field(None, max_length=255, description="Bezeichnung des Wertpapiers")
+    typ: str = Field("ETF", max_length=50, description="Typ des Wertpapiers (z. B. ETF, Aktie, Fonds)")
+    ticker_yahoo: str | None = Field(None, max_length=50, description="Ticker Symbol (z. B. EUNL.DE)")
+    depot: str = Field("cortal_consors", max_length=50, description="Depot (z. B. cortal_consors, scalable_capital)")
+    handelsplatz: str = Field("tradegate", max_length=50, description="Handelsplatz (z. B. tradegate, eix, gettex, xetra)")
+    aktiv: bool = True
+    initial_anteile: Decimal | None = Field(None, ge=Decimal("0"), description="Optionaler Anfangsbestand (Anteile)")
+    initial_datum: datetime.date | None = Field(None, description="Stichtag für den Anfangsbestand")
 
 
 class EtfItemResponse(BaseModel):
@@ -282,10 +298,11 @@ async def get_latest_prices(
     "/securities",
     response_model=list[EtfItemResponse],
     summary="Wertpapier-Stammdatenliste",
-    description="Liefert alle erfassten Wertpapiere (optional gefiltert nach Depot oder Aktivitätsstatus).",
+    description="Liefert alle erfassten Wertpapiere (optional gefiltert nach Depot, Typ oder Aktivitätsstatus).",
 )
 async def get_securities(
     depot: str | None = None,
+    typ: str | None = None,
     aktiv_only: bool = False,
     session: Session = Depends(get_wertpapiere_db),
 ) -> Any:
@@ -293,6 +310,8 @@ async def get_securities(
     stmt = select(Etf).order_by(Etf.id)
     if aktiv_only:
         stmt = stmt.where(Etf.aktiv.is_(True))
+    if typ and typ.strip() and typ.strip().lower() not in ("all", "gesamt"):
+        stmt = stmt.where(func.lower(Etf.typ) == typ.strip().lower())
     if depot and depot.strip() and depot.strip().lower() not in ("all", "gesamt"):
         stmt = stmt.where(Etf.depot == depot.strip())
 
@@ -311,6 +330,91 @@ async def get_securities(
         )
         for s in securities
     ]
+
+
+@api_router.post(
+    "/securities",
+    response_model=EtfItemResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Neues Wertpapier anlegen",
+    description="Erfasst ein neues Wertpapier (ETF, Aktie, Fonds) mit Stammdaten und optionalem Anfangsbestand.",
+)
+async def create_security(
+    request: CreateSecurityRequest,
+    session: Session = Depends(get_wertpapiere_db),
+) -> Any:
+    """Legt ein neues Wertpapier (Aktie, ETF, Fonds) an und initialisiert ggf. den Bestand."""
+    wkn_clean = request.wkn.strip().upper()
+    if not wkn_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="WKN darf nicht leer sein.",
+        )
+
+    # Check unique WKN
+    existing_wkn = session.execute(
+        select(Etf).where(func.upper(Etf.wkn) == wkn_clean)
+    ).scalar_one_or_none()
+    if existing_wkn:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Wertpapier mit WKN '{wkn_clean}' existiert bereits (ID {existing_wkn.id}: {existing_wkn.name}).",
+        )
+
+    # Check unique ISIN if provided
+    isin_clean = request.isin.strip().upper() if request.isin and request.isin.strip() else None
+    if isin_clean:
+        existing_isin = session.execute(
+            select(Etf).where(func.upper(Etf.isin) == isin_clean)
+        ).scalar_one_or_none()
+        if existing_isin:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Wertpapier mit ISIN '{isin_clean}' existiert bereits (ID {existing_isin.id}: {existing_isin.name}).",
+            )
+
+    name_clean = request.name.strip() if request.name and request.name.strip() else None
+    ticker_clean = request.ticker_yahoo.strip() if request.ticker_yahoo and request.ticker_yahoo.strip() else None
+    typ_clean = request.typ.strip() if request.typ and request.typ.strip() else "ETF"
+    depot_clean = request.depot.strip().lower() if request.depot and request.depot.strip() else "cortal_consors"
+    handelsplatz_clean = request.handelsplatz.strip().lower() if request.handelsplatz and request.handelsplatz.strip() else "tradegate"
+
+    new_etf = Etf(
+        wkn=wkn_clean,
+        isin=isin_clean,
+        name=name_clean,
+        typ=typ_clean,
+        ticker_yahoo=ticker_clean,
+        depot=depot_clean,
+        handelsplatz=handelsplatz_clean,
+        aktiv=request.aktiv,
+    )
+    session.add(new_etf)
+    session.flush()
+
+    if request.initial_anteile is not None:
+        holding_date = request.initial_datum or datetime.date.today()
+        initial_holding = WknBestandDatum(
+            wkn_id=new_etf.id,
+            datum=holding_date,
+            anteile=request.initial_anteile,
+        )
+        session.add(initial_holding)
+
+    session.commit()
+    session.refresh(new_etf)
+
+    return EtfItemResponse(
+        id=new_etf.id,
+        wkn=new_etf.wkn,
+        isin=new_etf.isin,
+        name=new_etf.name,
+        ticker_yahoo=new_etf.ticker_yahoo,
+        typ=new_etf.typ,
+        depot=new_etf.depot,
+        handelsplatz=new_etf.handelsplatz,
+        aktiv=new_etf.aktiv,
+    )
 
 
 @api_router.put(
@@ -339,13 +443,23 @@ async def update_security(
         )
 
     if request.name is not None:
-        etf.name = request.name
+        etf.name = request.name.strip() if request.name.strip() else None
     if request.isin is not None:
-        etf.isin = request.isin.strip().upper() if request.isin.strip() else None
+        isin_clean = request.isin.strip().upper() if request.isin.strip() else None
+        if isin_clean:
+            existing_isin = session.execute(
+                select(Etf).where((func.upper(Etf.isin) == isin_clean) & (Etf.id != wkn_id))
+            ).scalar_one_or_none()
+            if existing_isin:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Wertpapier mit ISIN '{isin_clean}' existiert bereits (ID {existing_isin.id}: {existing_isin.name}).",
+                )
+        etf.isin = isin_clean
     if request.ticker_yahoo is not None:
         etf.ticker_yahoo = request.ticker_yahoo.strip() if request.ticker_yahoo.strip() else None
     if request.typ is not None:
-        etf.typ = request.typ
+        etf.typ = request.typ.strip() if request.typ.strip() else "ETF"
     if request.depot is not None:
         etf.depot = request.depot.strip().lower()
     if request.handelsplatz is not None:
@@ -501,6 +615,7 @@ async def get_holdings(
                 wkn=etf.wkn,
                 isin=etf.isin,
                 name=etf.name,
+                typ=etf.typ,
                 ticker=etf.ticker_yahoo,
                 depot=etf.depot,
                 handelsplatz=etf.handelsplatz,

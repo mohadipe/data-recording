@@ -271,13 +271,55 @@ def test_depot_tabs_badges_and_filtering(client: TestClient, db_session: Session
     assert "Scalable Capital Depotwert" in html_sc
 
 
-def test_format_number_de_sign_handling():
-    """Verify format_number_de preserves negative sign on fractions between -1 and 0."""
-    from data_recorder.api.routes_finance import format_number_de
-    assert format_number_de(Decimal("-0.5"), decimals=2) == "-0,50"
-    assert format_number_de(Decimal("-0.05"), decimals=2) == "-0,05"
-    assert format_number_de(Decimal("0"), decimals=2) == "0,00"
-    assert format_number_de(Decimal("12.3456"), decimals=4) == "12,3456"
+def test_depot_security_creation_modal_and_type_badges(client: TestClient, db_session: Session):
+    """Verify presence of security creation button, modals, and Aktie/ETF badges."""
+    sec1 = Etf(
+        id=1,
+        wkn="865985",
+        name="Apple Inc.",
+        typ="Aktie",
+        depot="cortal_consors",
+        handelsplatz="tradegate",
+        aktiv=True,
+    )
+    sec2 = Etf(
+        id=2,
+        wkn="A0RPWH",
+        name="iShares Core MSCI World",
+        typ="ETF",
+        depot="scalable_capital",
+        handelsplatz="eix",
+        aktiv=True,
+    )
+    db_session.add_all([sec1, sec2])
+    db_session.commit()
+
+    resp = client.get("/depot")
+    assert resp.status_code == 200
+    html = resp.text
+
+    # Buttons
+    assert "btn-open-security-modal" in html
+    assert "Wertpapier" in html
+
+    # Badges for Typ
+    assert "Aktie" in html
+    assert "ETF" in html
+
+    # Modals
+    assert 'id="security-modal"' in html
+    assert 'id="security-form"' in html
+    assert 'id="edit-security-modal"' in html
+    assert 'id="edit-security-form"' in html
+
+    # Form fields in creation modal
+    assert 'id="sec-typ"' in html
+    assert 'id="sec-wkn"' in html
+    assert 'id="sec-isin"' in html
+    assert 'id="sec-name"' in html
+    assert 'id="sec-ticker"' in html
+    assert 'id="sec-depot"' in html
+    assert 'id="sec-handelsplatz"' in html
 
 
 

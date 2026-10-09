@@ -398,6 +398,7 @@ def test_holdings_depot_filter_and_securities_crud(client: TestClient, db_sessio
         wkn="A0RPWH",
         isin="IE00B4L5Y983",
         name="MSCI World",
+        typ="ETF",
         depot="cortal_consors",
         handelsplatz="tradegate",
         aktiv=True,
@@ -406,6 +407,7 @@ def test_holdings_depot_filter_and_securities_crud(client: TestClient, db_sessio
         wkn="A1T8FV",
         isin="IE00B8GKDB10",
         name="High Div",
+        typ="ETF",
         depot="scalable_capital",
         handelsplatz="gettex",
         aktiv=True,
@@ -421,6 +423,7 @@ def test_holdings_depot_filter_and_securities_crud(client: TestClient, db_sessio
     assert items_sc[0]["wkn"] == "A1T8FV"
     assert items_sc[0]["depot"] == "scalable_capital"
     assert items_sc[0]["handelsplatz"] == "gettex"
+    assert items_sc[0]["typ"] == "ETF"
 
     # 2. Test GET /api/finance/securities
     resp_sec = client.get("/api/finance/securities")
@@ -433,6 +436,7 @@ def test_holdings_depot_filter_and_securities_crud(client: TestClient, db_sessio
         "depot": "scalable_capital",
         "handelsplatz": "xetra",
         "name": "MSCI World Scalable",
+        "typ": "Aktie",
     }
     resp_upd = client.put(f"/api/finance/securities/{sec1.id}", json=update_payload)
     assert resp_upd.status_code == 200
@@ -440,4 +444,97 @@ def test_holdings_depot_filter_and_securities_crud(client: TestClient, db_sessio
     assert updated_sec["depot"] == "scalable_capital"
     assert updated_sec["handelsplatz"] == "xetra"
     assert updated_sec["name"] == "MSCI World Scalable"
+    assert updated_sec["typ"] == "Aktie"
+
+
+def test_create_security_endpoint_success(client: TestClient, db_session: Session):
+    """Tests POST /api/finance/securities to create a new stock or ETF."""
+    payload = {
+        "wkn": "865985",
+        "isin": "US0378331005",
+        "name": "Apple Inc.",
+        "typ": "Aktie",
+        "ticker_yahoo": "APC.DE",
+        "depot": "cortal_consors",
+        "handelsplatz": "tradegate",
+        "aktiv": True,
+    }
+    resp = client.post("/api/finance/securities", json=payload)
+    assert resp.status_code in (200, 201)
+    data = resp.json()
+    assert data["id"] > 0
+    assert data["wkn"] == "865985"
+    assert data["isin"] == "US0378331005"
+    assert data["name"] == "Apple Inc."
+    assert data["typ"] == "Aktie"
+    assert data["ticker_yahoo"] == "APC.DE"
+    assert data["depot"] == "cortal_consors"
+    assert data["handelsplatz"] == "tradegate"
+    assert data["aktiv"] is True
+
+    # Verify database persistence
+    sec = db_session.get(Etf, data["id"])
+    assert sec is not None
+    assert sec.wkn == "865985"
+    assert sec.typ == "Aktie"
+
+
+def test_create_security_with_initial_holding(client: TestClient, db_session: Session):
+    """Tests POST /api/finance/securities with initial holdings creation."""
+    payload = {
+        "wkn": "A113FF",
+        "isin": "IE00BKM4GZ66",
+        "name": "iShares Core MSCI EM IMI",
+        "typ": "ETF",
+        "ticker_yahoo": "IS3N.DE",
+        "depot": "scalable_capital",
+        "handelsplatz": "eix",
+        "initial_anteile": 42.5,
+        "initial_datum": "2026-10-01",
+    }
+    resp = client.post("/api/finance/securities", json=payload)
+    assert resp.status_code in (200, 201)
+    sec_id = resp.json()["id"]
+
+    # Verify initial holding was created
+    holdings_resp = client.get("/api/finance/holdings/history")
+    assert holdings_resp.status_code == 200
+    h_items = [h for h in holdings_resp.json() if h["wkn_id"] == sec_id]
+    assert len(h_items) == 1
+    assert h_items[0]["anteile"] == 42.5
+    assert h_items[0]["datum"] == "2026-10-01"
+
+
+def test_create_security_duplicate_wkn_and_isin_handling(client: TestClient, db_session: Session):
+    """Tests that duplicate WKN or ISIN returns 409 Conflict."""
+    existing = Etf(
+        wkn="A0RPWH",
+        isin="IE00B4L5Y983",
+        name="MSCI World",
+        depot="cortal_consors",
+        handelsplatz="tradegate",
+        aktiv=True,
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    # 1. Duplicate WKN (case-insensitive check)
+    dup_wkn_payload = {
+        "wkn": "a0rpwh",
+        "name": "Duplicate WKN",
+    }
+    resp1 = client.post("/api/finance/securities", json=dup_wkn_payload)
+    assert resp1.status_code == 409
+    assert "WKN" in resp1.json()["detail"]
+
+    # 2. Duplicate ISIN
+    dup_isin_payload = {
+        "wkn": "NEW123",
+        "isin": "ie00b4l5y983",
+        "name": "Duplicate ISIN",
+    }
+    resp2 = client.post("/api/finance/securities", json=dup_isin_payload)
+    assert resp2.status_code == 409
+    assert "ISIN" in resp2.json()["detail"]
+
 

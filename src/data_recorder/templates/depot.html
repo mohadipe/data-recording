@@ -4,17 +4,24 @@
 
 {% block content %}
 <div class="flex-1 flex flex-col space-y-5" id="depot-app">
-    <!-- Header mit Titel und Aktions-Button -->
+    <!-- Header mit Titel und Aktions-Buttons -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
             <h2 class="text-lg font-bold text-slate-100">Depot-Verwaltung</h2>
             <p class="text-xs text-slate-400">Multi-Depot Anteilsbestände, Handelsplätze & Kurse</p>
         </div>
-        <button type="button" id="btn-open-holding-modal"
-            class="bg-brand-600 hover:bg-brand-500 active:scale-95 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg shadow-brand-600/30 transition flex items-center justify-center space-x-1.5 self-start sm:self-auto">
-            <span>+</span>
-            <span>Bestand erfassen</span>
-        </button>
+        <div class="flex items-center space-x-2 self-start sm:self-auto">
+            <button type="button" id="btn-open-security-modal"
+                class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-brand-400 hover:text-brand-300 border border-slate-700 hover:border-brand-500/40 text-xs font-bold py-2 px-3.5 rounded-xl transition flex items-center justify-center space-x-1.5 shadow-sm">
+                <span>+</span>
+                <span>Wertpapier anlegen</span>
+            </button>
+            <button type="button" id="btn-open-holding-modal"
+                class="bg-brand-600 hover:bg-brand-500 active:scale-95 text-white text-xs font-bold py-2 px-3.5 rounded-xl shadow-lg shadow-brand-600/30 transition flex items-center justify-center space-x-1.5">
+                <span>+</span>
+                <span>Bestand erfassen</span>
+            </button>
+        </div>
     </div>
 
     <!-- Depot Filter Tabs -->
@@ -98,10 +105,13 @@
             <div class="holding-card bg-slate-800/50 border border-slate-700/80 hover:border-slate-600 rounded-2xl p-4 transition shadow-sm"
                 data-wkn-id="{{ item.wkn_id }}"
                 data-wkn="{{ item.wkn }}"
+                data-isin="{{ item.isin or '' }}"
+                data-name="{{ item.name or item.wkn }}"
+                data-typ="{{ item.typ }}"
+                data-ticker="{{ item.ticker or '' }}"
                 data-depot="{{ item.depot }}"
                 data-handelsplatz="{{ item.handelsplatz }}"
-                data-gesamtwert="{{ item.gesamtwert }}"
-                data-name="{{ item.name or item.wkn }}">
+                data-gesamtwert="{{ item.gesamtwert }}">
                 
                 <!-- Oberste Zeile: Badges & Schnellaktion -->
                 <div class="flex items-start justify-between gap-2">
@@ -109,6 +119,21 @@
                         <span class="text-xs font-bold px-2 py-0.5 rounded-md bg-brand-500/20 text-brand-300 border border-brand-500/30 font-mono">
                             {{ item.wkn }}
                         </span>
+
+                        <!-- Typ Badge -->
+                        {% if item.typ == 'Aktie' %}
+                        <span class="text-[11px] font-bold px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                            Aktie
+                        </span>
+                        {% elif item.typ == 'Fonds' %}
+                        <span class="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            Fonds
+                        </span>
+                        {% else %}
+                        <span class="text-[11px] font-bold px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            {{ item.typ or 'ETF' }}
+                        </span>
+                        {% endif %}
                         
                         <!-- Depot Badge -->
                         {% if item.depot == 'scalable_capital' %}
@@ -152,12 +177,29 @@
                         {% endif %}
                     </div>
 
-                    <button type="button"
-                        class="btn-quick-add-holding text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition flex items-center space-x-1"
-                        data-wkn-id="{{ item.wkn_id }}">
-                        <span>+</span>
-                        <span>Bestand</span>
-                    </button>
+                    <div class="flex items-center space-x-1.5">
+                        <button type="button"
+                            class="btn-edit-security text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-slate-200 transition flex items-center space-x-1"
+                            data-wkn-id="{{ item.wkn_id }}"
+                            data-wkn="{{ item.wkn }}"
+                            data-isin="{{ item.isin or '' }}"
+                            data-name="{{ item.name or '' }}"
+                            data-typ="{{ item.typ }}"
+                            data-ticker="{{ item.ticker or '' }}"
+                            data-depot="{{ item.depot }}"
+                            data-handelsplatz="{{ item.handelsplatz }}">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                            <span class="hidden sm:inline">Stammdaten</span>
+                        </button>
+                        <button type="button"
+                            class="btn-quick-add-holding text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition flex items-center space-x-1"
+                            data-wkn-id="{{ item.wkn_id }}">
+                            <span>+</span>
+                            <span>Bestand</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Wertpapier Name -->
@@ -325,12 +367,236 @@
             </form>
         </div>
     </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: NEUES WERTPAPIER ANLEGEN           -->
+    <!-- ========================================== -->
+    <div id="security-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                    <h3 class="text-base font-bold text-slate-100">Neues Wertpapier anlegen</h3>
+                    <p class="text-xs text-slate-400">Aktie, ETF oder Fonds für Kursabfrage & Bestandsverwaltung erfassen</p>
+                </div>
+                <button type="button" class="btn-close-modal text-slate-400 hover:text-slate-200 text-lg leading-none">&times;</button>
+            </div>
+
+            <form id="security-form" class="space-y-3.5">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            Typ <span class="text-brand-400">*</span>
+                        </label>
+                        <select id="sec-typ" required
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-medium">
+                            <option value="ETF" selected>ETF</option>
+                            <option value="Aktie">Aktie</option>
+                            <option value="Fonds">Fonds</option>
+                            <option value="Sonstige">Sonstige</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            WKN <span class="text-brand-400">*</span>
+                        </label>
+                        <input type="text" id="sec-wkn" required placeholder="z. B. 865985 oder A0RPWH"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-mono uppercase">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">
+                        Name / Bezeichnung <span class="text-brand-400">*</span>
+                    </label>
+                    <input type="text" id="sec-name" required placeholder="z. B. Apple Inc. oder MSCI World ETF"
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            ISIN (empfohlen)
+                        </label>
+                        <input type="text" id="sec-isin" placeholder="z. B. US0378331005" maxlength="12"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-mono uppercase">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            Ticker Symbol
+                        </label>
+                        <input type="text" id="sec-ticker" placeholder="z. B. APC.DE oder EUNL.DE"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-mono">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            Depot <span class="text-brand-400">*</span>
+                        </label>
+                        <select id="sec-depot" required
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500">
+                            <option value="cortal_consors" selected>Consorsbank</option>
+                            <option value="scalable_capital">Scalable Capital</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">
+                            Handelsplatz <span class="text-brand-400">*</span>
+                        </label>
+                        <select id="sec-handelsplatz" required
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500">
+                            <option value="tradegate" selected>Tradegate</option>
+                            <option value="eix">EIX (European Investor Exchange)</option>
+                            <option value="gettex">gettex (Börse München)</option>
+                            <option value="xetra">Xetra</option>
+                            <option value="hannover">Börse Hannover</option>
+                            <option value="stuttgart">Börse Stuttgart</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Optionaler Anfangsbestand -->
+                <div class="border-t border-slate-800 pt-3">
+                    <span class="text-xs font-semibold text-slate-400 block mb-2">Anfangsbestand (optional)</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] text-slate-400 mb-1">Anteile</label>
+                            <input type="number" step="any" min="0" id="sec-initial-anteile" placeholder="z. B. 10.5"
+                                class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-slate-400 mb-1">Stichtag</label>
+                            <input type="date" id="sec-initial-datum" value="{{ today_date }}"
+                                class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button type="button" class="btn-close-modal w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl border border-slate-700 text-xs font-semibold transition">
+                        Abbrechen
+                    </button>
+                    <button type="submit" id="btn-save-security"
+                        class="w-2/3 bg-brand-600 hover:bg-brand-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-brand-600/30 transition">
+                        Wertpapier anlegen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: STAMMDATEN BEARBEITEN              -->
+    <!-- ========================================== -->
+    <div id="edit-security-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                    <h3 class="text-base font-bold text-slate-100">Stammdaten bearbeiten</h3>
+                    <p class="text-xs text-slate-400">Handelsplatz, Depot, Ticker und Typ anpassen</p>
+                </div>
+                <button type="button" class="btn-close-modal text-slate-400 hover:text-slate-200 text-lg leading-none">&times;</button>
+            </div>
+
+            <form id="edit-security-form" class="space-y-3.5">
+                <input type="hidden" id="edit-sec-id">
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">WKN</label>
+                        <input type="text" id="edit-sec-wkn" disabled
+                            class="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-400 font-mono cursor-not-allowed">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Typ</label>
+                        <select id="edit-sec-typ" required
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-medium">
+                            <option value="ETF">ETF</option>
+                            <option value="Aktie">Aktie</option>
+                            <option value="Fonds">Fonds</option>
+                            <option value="Sonstige">Sonstige</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Name / Bezeichnung</label>
+                    <input type="text" id="edit-sec-name" required
+                        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">ISIN</label>
+                        <input type="text" id="edit-sec-isin" maxlength="12"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-mono uppercase">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Ticker Symbol</label>
+                        <input type="text" id="edit-sec-ticker"
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500 font-mono">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Depot</label>
+                        <select id="edit-sec-depot" required
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500">
+                            <option value="cortal_consors">Consorsbank</option>
+                            <option value="scalable_capital">Scalable Capital</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Handelsplatz</label>
+                        <select id="edit-sec-handelsplatz" required
+                            class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:ring-2 focus:ring-brand-500">
+                            <option value="tradegate">Tradegate</option>
+                            <option value="eix">EIX (European Investor Exchange)</option>
+                            <option value="gettex">gettex (Börse München)</option>
+                            <option value="xetra">Xetra</option>
+                            <option value="hannover">Börse Hannover</option>
+                            <option value="stuttgart">Börse Stuttgart</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pt-1 flex items-center space-x-2">
+                    <input type="checkbox" id="edit-sec-aktiv"
+                        class="w-4 h-4 rounded bg-slate-800 border-slate-700 text-brand-600 focus:ring-brand-500">
+                    <label for="edit-sec-aktiv" class="text-xs font-medium text-slate-300 cursor-pointer">
+                        Wertpapier ist aktiv (in Übersichten und Kursabfragen berücksichtigen)
+                    </label>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button type="button" class="btn-close-modal w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl border border-slate-700 text-xs font-semibold transition">
+                        Abbrechen
+                    </button>
+                    <button type="submit" id="btn-update-security-submit"
+                        class="w-2/3 bg-brand-600 hover:bg-brand-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-brand-600/30 transition">
+                        Änderungen speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <script>
     document.addEventListener("DOMContentLoaded", () => {
         const holdingModal = document.getElementById("holding-modal");
-        const btnOpenModal = document.getElementById("btn-open-holding-modal");
+        const btnOpenHoldingModal = document.getElementById("btn-open-holding-modal");
+        const securityModal = document.getElementById("security-modal");
+        const btnOpenSecurityModal = document.getElementById("btn-open-security-modal");
+        const editSecurityModal = document.getElementById("edit-security-modal");
         const btnUpdatePrices = document.getElementById("btn-update-prices");
         const btnUpdatePricesText = document.getElementById("btn-update-prices-text");
         const iconRefresh = document.getElementById("icon-refresh");
@@ -430,22 +696,39 @@
         document.querySelectorAll(".btn-close-modal").forEach(btn => {
             btn.addEventListener("click", () => {
                 holdingModal.classList.add("hidden");
+                securityModal.classList.add("hidden");
+                editSecurityModal.classList.add("hidden");
             });
         });
 
         // Close modal on click outside
-        holdingModal.addEventListener("click", (e) => {
-            if (e.target === holdingModal) {
-                holdingModal.classList.add("hidden");
-            }
+        [holdingModal, securityModal, editSecurityModal].forEach(modal => {
+            modal.addEventListener("click", (e) => {
+                if (e.target === modal) {
+                    modal.classList.add("hidden");
+                }
+            });
         });
 
-        // Open modal
-        if (btnOpenModal) {
-            btnOpenModal.addEventListener("click", () => {
+        // Open holding modal
+        if (btnOpenHoldingModal) {
+            btnOpenHoldingModal.addEventListener("click", () => {
                 document.getElementById("modal-anteile").value = "";
                 holdingModal.classList.remove("hidden");
                 document.getElementById("modal-anteile").focus();
+            });
+        }
+
+        // Open security creation modal
+        if (btnOpenSecurityModal) {
+            btnOpenSecurityModal.addEventListener("click", () => {
+                document.getElementById("sec-wkn").value = "";
+                document.getElementById("sec-name").value = "";
+                document.getElementById("sec-isin").value = "";
+                document.getElementById("sec-ticker").value = "";
+                document.getElementById("sec-initial-anteile").value = "";
+                securityModal.classList.remove("hidden");
+                document.getElementById("sec-wkn").focus();
             });
         }
 
@@ -461,6 +744,101 @@
                 holdingModal.classList.remove("hidden");
                 document.getElementById("modal-anteile").focus();
             });
+        });
+
+        // Open Edit Security Modal
+        document.querySelectorAll(".btn-edit-security").forEach(btn => {
+            btn.addEventListener("click", () => {
+                document.getElementById("edit-sec-id").value = btn.dataset.wknId;
+                document.getElementById("edit-sec-wkn").value = btn.dataset.wkn;
+                document.getElementById("edit-sec-name").value = btn.dataset.name || "";
+                document.getElementById("edit-sec-typ").value = btn.dataset.typ || "ETF";
+                document.getElementById("edit-sec-isin").value = btn.dataset.isin || "";
+                document.getElementById("edit-sec-ticker").value = btn.dataset.ticker || "";
+                document.getElementById("edit-sec-depot").value = btn.dataset.depot || "cortal_consors";
+                document.getElementById("edit-sec-handelsplatz").value = btn.dataset.handelsplatz || "tradegate";
+                document.getElementById("edit-sec-aktiv").checked = true;
+
+                editSecurityModal.classList.remove("hidden");
+                document.getElementById("edit-sec-name").focus();
+            });
+        });
+
+        // Submit security creation form
+        document.getElementById("security-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById("btn-save-security");
+            btn.disabled = true;
+            btn.textContent = "Speichere...";
+
+            const initialAnteileRaw = document.getElementById("sec-initial-anteile").value;
+            const payload = {
+                typ: document.getElementById("sec-typ").value,
+                wkn: document.getElementById("sec-wkn").value.trim().toUpperCase(),
+                name: document.getElementById("sec-name").value.trim(),
+                isin: document.getElementById("sec-isin").value.trim() || null,
+                ticker_yahoo: document.getElementById("sec-ticker").value.trim() || null,
+                depot: document.getElementById("sec-depot").value,
+                handelsplatz: document.getElementById("sec-handelsplatz").value,
+                aktiv: true,
+                initial_anteile: initialAnteileRaw ? parseFloat(initialAnteileRaw.replace(",", ".")) : null,
+                initial_datum: document.getElementById("sec-initial-datum").value || null,
+            };
+
+            try {
+                const res = await fetch("/api/finance/securities", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Fehler beim Anlegen des Wertpapiers");
+                }
+                showToast(`Wertpapier ${payload.wkn} erfolgreich angelegt!`);
+                setTimeout(() => window.location.reload(), 800);
+            } catch (err) {
+                showToast(`Fehler: ${err.message}`, true);
+                btn.disabled = false;
+                btn.textContent = "Wertpapier anlegen";
+            }
+        });
+
+        // Submit security edit form
+        document.getElementById("edit-security-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById("btn-update-security-submit");
+            const wknId = document.getElementById("edit-sec-id").value;
+            btn.disabled = true;
+            btn.textContent = "Speichere...";
+
+            const payload = {
+                name: document.getElementById("edit-sec-name").value.trim(),
+                typ: document.getElementById("edit-sec-typ").value,
+                isin: document.getElementById("edit-sec-isin").value.trim() || null,
+                ticker_yahoo: document.getElementById("edit-sec-ticker").value.trim() || null,
+                depot: document.getElementById("edit-sec-depot").value,
+                handelsplatz: document.getElementById("edit-sec-handelsplatz").value,
+                aktiv: document.getElementById("edit-sec-aktiv").checked,
+            };
+
+            try {
+                const res = await fetch(`/api/finance/securities/${wknId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Fehler beim Aktualisieren der Stammdaten");
+                }
+                showToast("Stammdaten erfolgreich aktualisiert!");
+                setTimeout(() => window.location.reload(), 800);
+            } catch (err) {
+                showToast(`Fehler: ${err.message}`, true);
+                btn.disabled = false;
+                btn.textContent = "Änderungen speichern";
+            }
         });
 
         // Submit holding form
