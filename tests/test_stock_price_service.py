@@ -354,21 +354,46 @@ def test_xetra_provider_success():
         mock_yf.assert_any_call("EUNL.DE")
 
 
+def test_eix_provider_success():
+    """Tests EixProvider candidate ticker handling (Börse Hannover / gettex) and price fetch."""
+    from data_recorder.services.stock_price_providers import EixProvider
+
+    provider = EixProvider()
+    dates = [datetime.date(2026, 10, 9)]
+    df = _create_mock_history_df(dates, [131.60])
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = df
+
+    with patch("yfinance.Ticker", return_value=mock_ticker) as mock_yf:
+        res = provider.fetch_price_sync(wkn="A0RPWH", ticker="EUNL.DE", isin="IE00B4L5Y983")
+        assert res is not None
+        price, quote_date, source = res
+        assert price == Decimal("131.60")
+        assert source == "eix"
+        mock_yf.assert_any_call("EUNL.HA")
+
+
 def test_routing_by_handelsplatz_and_depot():
     """Tests that get_providers_for_security selects the correct primary provider."""
     service = StockPriceService()
 
-    # 1. gettex / Scalable Capital
+    # 1. EIX / European Investor Exchange
+    etf_eix = Etf(wkn="A0RPWH", depot="scalable_capital", handelsplatz="european investor exchange (EIX)")
+    providers_eix = service.get_providers_for_security(etf_eix)
+    assert providers_eix[0].name == "eix"
+
+    # 2. gettex / Scalable Capital
     etf_scalable = Etf(wkn="A0RPWH", depot="scalable_capital", handelsplatz="gettex")
     providers_gettex = service.get_providers_for_security(etf_scalable)
     assert providers_gettex[0].name == "gettex"
 
-    # 2. Xetra
+    # 3. Xetra
     etf_xetra = Etf(wkn="A0RPWH", depot="scalable_capital", handelsplatz="xetra")
     providers_xetra = service.get_providers_for_security(etf_xetra)
     assert providers_xetra[0].name == "xetra"
 
-    # 3. Tradegate / Consorsbank
+    # 4. Tradegate / Consorsbank
     etf_consors = Etf(wkn="A0RPWH", depot="cortal_consors", handelsplatz="tradegate")
     providers_tg = service.get_providers_for_security(etf_consors)
     assert providers_tg[0].name == "tradegate"

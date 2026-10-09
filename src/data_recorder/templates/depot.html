@@ -122,7 +122,11 @@
                         {% endif %}
 
                         <!-- Handelsplatz Badge -->
-                        {% if item.handelsplatz == 'gettex' %}
+                        {% if 'eix' in item.handelsplatz|lower or 'european' in item.handelsplatz|lower %}
+                        <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
+                            EIX
+                        </span>
+                        {% elif item.handelsplatz == 'gettex' %}
                         <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">
                             gettex
                         </span>
@@ -132,7 +136,7 @@
                         </span>
                         {% else %}
                         <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
-                            Tradegate
+                            {{ item.handelsplatz|handelsplatz_de }}
                         </span>
                         {% endif %}
 

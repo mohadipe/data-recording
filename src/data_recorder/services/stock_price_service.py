@@ -12,6 +12,7 @@ from data_recorder.core.config import Settings, get_settings
 from data_recorder.core.database import get_db_session
 from data_recorder.models.wertpapiere import Etf, WknKursDatum
 from data_recorder.services.stock_price_providers import (
+    EixProvider,
     GettexProvider,
     StockPriceProvider,
     TradegateProvider,
@@ -66,7 +67,7 @@ class StockPriceResult:
 
 
 class StockPriceService:
-    """Service to fetch stock and ETF closing prices via Tradegate / gettex / Xetra / Yahoo Finance and persist them into MySQL."""
+    """Service to fetch stock and ETF closing prices via Tradegate / EIX / gettex / Xetra / Yahoo Finance and persist them into MySQL."""
 
     def __init__(
         self,
@@ -78,7 +79,7 @@ class StockPriceService:
         self.default_providers: list[StockPriceProvider] = (
             providers
             if providers is not None
-            else [TradegateProvider(), GettexProvider(), YahooFinanceProvider()]
+            else [TradegateProvider(), EixProvider(), GettexProvider(), YahooFinanceProvider()]
         )
 
     @property
@@ -98,7 +99,9 @@ class StockPriceService:
         h_platz = (handelsplatz or (sec.handelsplatz if sec else "") or "").lower().strip()
         d_pot = (depot or (sec.depot if sec else "") or "").lower().strip()
 
-        if h_platz == "gettex" or (d_pot == "scalable_capital" and h_platz in ("", "gettex")):
+        if "eix" in h_platz or "european investor exchange" in h_platz or "hannover" in h_platz:
+            return [EixProvider(), TradegateProvider(), GettexProvider(), YahooFinanceProvider()]
+        elif h_platz == "gettex" or (d_pot == "scalable_capital" and h_platz in ("", "gettex")):
             return [GettexProvider(), TradegateProvider(), YahooFinanceProvider()]
         elif h_platz == "xetra":
             return [XetraProvider(), TradegateProvider(), YahooFinanceProvider()]
@@ -107,7 +110,7 @@ class StockPriceService:
         elif h_platz == "tradegate" or d_pot == "cortal_consors":
             return [TradegateProvider(), YahooFinanceProvider()]
         else:
-            return [TradegateProvider(), GettexProvider(), YahooFinanceProvider()]
+            return [TradegateProvider(), EixProvider(), GettexProvider(), YahooFinanceProvider()]
 
     def get_active_securities(
         self, session: Session, depot: str | None = None

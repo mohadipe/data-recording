@@ -213,6 +213,89 @@ class GettexProvider:
         )
 
 
+class EixProvider:
+    """Provider for European Investor Exchange (EIX) / Börse Hannover / Scalable Capital."""
+
+    name: str = "eix"
+
+    def __init__(self, timeout: float = 10.0) -> None:
+        self.timeout = timeout
+
+    def fetch_price_sync(
+        self,
+        wkn: str,
+        isin: str | None = None,
+        ticker: str | None = None,
+        target_date: datetime.date | None = None,
+    ) -> tuple[Decimal, datetime.date, str] | None:
+        """Fetches closing price for EIX (Börse Hannover / gettex / regional exchanges)."""
+        candidates = []
+        if ticker:
+            clean = ticker.strip()
+            if "." in clean:
+                base = clean.split(".")[0]
+                candidates.extend([f"{base}.HA", f"{base}.HM", f"{base}.MU", f"{base}.DE", clean])
+            else:
+                candidates.extend([f"{clean}.HA", f"{clean}.HM", f"{clean}.MU", f"{clean}.DE", clean])
+
+        if isin:
+            candidates.append(isin.strip())
+
+        for cand in candidates:
+            try:
+                yf_ticker = yf.Ticker(cand)
+                hist = yf_ticker.history(period="5d")
+                if hist is None or hist.empty:
+                    continue
+
+                close_col = next(
+                    (c for c in hist.columns if str(c).lower() == "close"), None
+                )
+                if close_col is None:
+                    continue
+
+                if target_date is not None:
+                    matching = hist[hist.index.date == target_date]
+                    if matching.empty:
+                        continue
+                    row = matching.iloc[-1]
+                    quote_date = target_date
+                else:
+                    row = hist.iloc[-1]
+                    quote_date = hist.index[-1].date()
+
+                raw_price = row[close_col]
+                if raw_price is None or pd_is_na(raw_price):
+                    continue
+
+                price = Decimal(str(round(float(raw_price), 4)))
+                if price <= Decimal("0"):
+                    continue
+
+                return price, quote_date, self.name
+            except Exception as exc:
+                logger.debug("EixProvider candidate '%s' failed: %s", cand, exc)
+
+        logger.warning(
+            "EixProvider: Kein Kurs für WKN=%s, ISIN=%s, Ticker=%s ermittelt.",
+            wkn,
+            isin,
+            ticker,
+        )
+        return None
+
+    async def fetch_price(
+        self,
+        wkn: str,
+        isin: str | None = None,
+        ticker: str | None = None,
+        target_date: datetime.date | None = None,
+    ) -> tuple[Decimal, datetime.date, str] | None:
+        return await asyncio.to_thread(
+            self.fetch_price_sync, wkn, isin, ticker, target_date
+        )
+
+
 class XetraProvider:
     """Provider for Deutsche Börse Xetra quotes (.DE)."""
 

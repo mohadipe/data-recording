@@ -685,7 +685,9 @@ def format_handelsplatz_de(platz: str | None) -> str:
     if not platz:
         return "Tradegate"
     p = platz.lower()
-    if p == "tradegate":
+    if "eix" in p or "european investor exchange" in p or "hannover" in p:
+        return "EIX"
+    elif p == "tradegate":
         return "Tradegate"
     elif p == "gettex":
         return "gettex"
@@ -693,7 +695,7 @@ def format_handelsplatz_de(platz: str | None) -> str:
         return "Xetra"
     elif p == "stuttgart":
         return "Stuttgart"
-    return platz.upper()
+    return platz.title()
 
 
 templates.env.filters["currency_de"] = format_currency_de
