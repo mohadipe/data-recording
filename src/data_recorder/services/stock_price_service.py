@@ -5,13 +5,17 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-import yfinance as yf
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from data_recorder.core.config import Settings, get_settings
 from data_recorder.core.database import get_db_session
 from data_recorder.models.wertpapiere import Etf, WknKursDatum
+from data_recorder.services.stock_price_providers import (
+    StockPriceProvider,
+    TradegateProvider,
+    YahooFinanceProvider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,7 @@ class StockPriceResult:
     ticker: str
     datum: datetime.date
     kurs: Decimal
+    source: str = "tradegate"
 
     def __init__(
         self,
@@ -34,11 +39,13 @@ class StockPriceResult:
         datum: datetime.date,
         kurs: Decimal | None = None,
         wert: Decimal | None = None,
+        source: str = "tradegate",
     ) -> None:
         self.wkn_id = wkn_id
         self.wkn = wkn
         self.ticker = ticker
         self.datum = datum
+        self.source = source
         if kurs is not None:
             self.kurs = kurs
         elif wert is not None:
@@ -57,102 +64,121 @@ class StockPriceResult:
 
 
 class StockPriceService:
-    """Service to fetch Tradegate closing prices from Yahoo Finance and persist them into MySQL."""
+    """Service to fetch stock and ETF closing prices via Tradegate (Primary) and Yahoo Finance (Fallback) and persist them into MySQL."""
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        providers: list[StockPriceProvider] | None = None,
+    ) -> None:
         self.settings = settings or get_settings()
+        self.providers: list[StockPriceProvider] = (
+            providers
+            if providers is not None
+            else [TradegateProvider(), YahooFinanceProvider()]
+        )
 
     def get_active_securities(self, session: Session) -> list[Etf]:
-        """Returns all securities from wertpapiere.etf where aktiv is TRUE and ticker_yahoo is set."""
+        """Returns all active securities from wertpapiere.etf that have at least ISIN, WKN or Ticker set."""
         stmt = (
             select(Etf)
             .where(Etf.aktiv.is_(True))
-            .where(Etf.ticker_yahoo.is_not(None))
+            .where(
+                or_(
+                    Etf.isin.is_not(None),
+                    Etf.wkn.is_not(None),
+                    Etf.ticker_yahoo.is_not(None),
+                )
+            )
             .order_by(Etf.id)
         )
         candidates = session.execute(stmt).scalars().all()
-        return [sec for sec in candidates if sec.ticker_yahoo and sec.ticker_yahoo.strip()]
+        return [
+            sec
+            for sec in candidates
+            if (sec.isin and sec.isin.strip())
+            or (sec.wkn and sec.wkn.strip())
+            or (sec.ticker_yahoo and sec.ticker_yahoo.strip())
+        ]
 
     def fetch_closing_price_sync(
-        self, ticker_symbol: str, target_date: datetime.date | None = None
-    ) -> tuple[Decimal, datetime.date] | None:
-        """Synchronously queries Yahoo Finance API for the closing price of the given ticker.
+        self,
+        ticker_symbol: str,
+        target_date: datetime.date | None = None,
+        *,
+        wkn: str = "",
+        isin: str | None = None,
+    ) -> tuple[Decimal, datetime.date, str] | None:
+        """Synchronously queries the provider chain for price data.
 
-        Returns (price, quote_date) or None on error/missing data.
+        Returns (price, quote_date, source_provider_name) or None.
         """
-        clean_ticker = ticker_symbol.strip()
-        if not clean_ticker:
-            return None
-
-        try:
-            ticker = yf.Ticker(clean_ticker)
-            # Retrieve 5 trading days to account for weekends/bank holidays
-            hist = ticker.history(period="5d")
-
-            if hist is None or hist.empty:
-                logger.warning(
-                    "Yahoo Finance lieferte keine Kursdaten für Ticker '%s'.",
-                    clean_ticker,
-                )
-                return None
-
-            close_col = next((c for c in hist.columns if str(c).lower() == "close"), None)
-            if close_col is None:
-                logger.warning(
-                    "Spalte 'Close' nicht in Yahoo-Finance-Historie für '%s' gefunden.",
-                    clean_ticker,
-                )
-                return None
-
-            if target_date is not None:
-                matching = hist[hist.index.date == target_date]
-                if matching.empty:
-                    logger.warning(
-                        "Kein Kurs für das Zieldatum %s bei Ticker '%s' in den letzten 5 Handelstagen gefunden.",
-                        target_date,
-                        clean_ticker,
+        for provider in self.providers:
+            try:
+                if hasattr(provider, "fetch_price_sync"):
+                    result = provider.fetch_price_sync(  # type: ignore[attr-defined]
+                        wkn=wkn,
+                        isin=isin,
+                        ticker=ticker_symbol,
+                        target_date=target_date,
                     )
-                    return None
-                row = matching.iloc[-1]
-                quote_date = target_date
-            else:
-                row = hist.iloc[-1]
-                quote_date = hist.index[-1].date()
+                else:
+                    # Async fallback
+                    result = asyncio.run(
+                        provider.fetch_price(
+                            wkn=wkn,
+                            isin=isin,
+                            ticker=ticker_symbol,
+                            target_date=target_date,
+                        )
+                    )
 
-            raw_price = row[close_col]
-            if raw_price is None or pd_is_na(raw_price):
+                if result is not None:
+                    price, quote_date, source = result
+                    return price, quote_date, source
+            except Exception as exc:
                 logger.warning(
-                    "Schlusskurs für Ticker '%s' am %s ist ungültig (NA/None).",
-                    clean_ticker,
-                    quote_date,
+                    "Provider '%s' fehlgeschlagen für WKN=%s, ISIN=%s, Ticker=%s: %s",
+                    getattr(provider, "name", str(provider)),
+                    wkn,
+                    isin,
+                    ticker_symbol,
+                    exc,
                 )
-                return None
 
-            price = Decimal(str(round(float(raw_price), 2)))
-            if price <= Decimal("0"):
-                logger.warning(
-                    "Unplausibler Schlusskurs <= 0 (%s) für Ticker '%s' am %s.",
-                    price,
-                    clean_ticker,
-                    quote_date,
-                )
-                return None
-
-            return price, quote_date
-
-        except Exception as exc:
-            logger.warning(
-                "Fehler bei Yahoo-Finance-Kursabfrage für Ticker '%s': %s",
-                clean_ticker,
-                exc,
-            )
-            return None
+        return None
 
     async def fetch_closing_price(
-        self, ticker_symbol: str, target_date: datetime.date | None = None
-    ) -> tuple[Decimal, datetime.date] | None:
-        """Asynchronous non-blocking wrapper around fetch_closing_price_sync."""
-        return await asyncio.to_thread(self.fetch_closing_price_sync, ticker_symbol, target_date)
+        self,
+        ticker_symbol: str,
+        target_date: datetime.date | None = None,
+        *,
+        wkn: str = "",
+        isin: str | None = None,
+    ) -> tuple[Decimal, datetime.date, str] | None:
+        """Asynchronously queries the provider chain for price data."""
+        for provider in self.providers:
+            try:
+                result = await provider.fetch_price(
+                    wkn=wkn,
+                    isin=isin,
+                    ticker=ticker_symbol,
+                    target_date=target_date,
+                )
+                if result is not None:
+                    price, quote_date, source = result
+                    return price, quote_date, source
+            except Exception as exc:
+                logger.warning(
+                    "Provider '%s' fehlgeschlagen für WKN=%s, ISIN=%s, Ticker=%s: %s",
+                    getattr(provider, "name", str(provider)),
+                    wkn,
+                    isin,
+                    ticker_symbol,
+                    exc,
+                )
+
+        return None
 
     def save_stock_price(
         self,
@@ -193,29 +219,32 @@ class StockPriceService:
     async def _process_securities(
         self, session: Session, target_date: datetime.date | None = None
     ) -> list[WknKursDatum]:
-        """Iterates over active securities, fetches latest quotes, and saves them idempotently."""
+        """Iterates over active securities, fetches quotes via Tradegate/Yahoo providers, and persists them."""
         securities = self.get_active_securities(session)
         if not securities:
-            logger.info("Keine aktiven Wertpapiere mit hinterlegtem Yahoo-Ticker vorhanden.")
+            logger.info("Keine aktiven Wertpapiere zur Kursabfrage vorhanden.")
             return []
 
         saved_records: list[WknKursDatum] = []
         for sec in securities:
-            ticker = sec.ticker_yahoo
-            if not ticker:
-                continue
-
             try:
-                fetch_result = await self.fetch_closing_price(ticker, target_date=target_date)
+                fetch_result = await self.fetch_closing_price(
+                    ticker_symbol=sec.ticker_yahoo or "",
+                    target_date=target_date,
+                    wkn=sec.wkn,
+                    isin=sec.isin,
+                )
                 if fetch_result is None:
                     logger.warning(
-                        "Konnte keinen Kurs für WKN %s (Ticker: %s) ermitteln.",
+                        "Konnte für WKN %s (%s, ISIN: %s, Ticker: %s) über keinen Provider einen Kurs ermitteln.",
                         sec.wkn,
-                        ticker,
+                        sec.name,
+                        sec.isin,
+                        sec.ticker_yahoo,
                     )
                     continue
 
-                price, quote_date = fetch_result
+                price, quote_date, source_name = fetch_result
                 record = self.save_stock_price(
                     wkn_id=sec.id,
                     datum=quote_date,
@@ -225,17 +254,19 @@ class StockPriceService:
                 record.etf = sec
                 saved_records.append(record)
                 logger.info(
-                    "Kurs für WKN %s (%s) am %s erfolgreich gespeichert: %s €",
+                    "Kurs für WKN %s (%s, ISIN: %s) via %s am %s erfolgreich gespeichert: %s €",
                     sec.wkn,
-                    ticker,
+                    sec.name or sec.wkn,
+                    sec.isin or "-",
+                    source_name,
                     quote_date,
                     price,
                 )
             except Exception as exc:
                 logger.error(
-                    "Fehler beim Verarbeiten von WKN %s (%s): %s",
+                    "Fehler beim Verarbeiten von WKN %s (ISIN: %s): %s",
                     sec.wkn,
-                    ticker,
+                    sec.isin,
                     exc,
                     exc_info=True,
                 )
@@ -256,15 +287,3 @@ class StockPriceService:
             return await self._process_securities(db, target_date=target_date)
 
         return []
-
-
-def pd_is_na(val: Any) -> bool:
-    """Helper to detect pandas/numpy NaN or None values."""
-    if val is None:
-        return True
-    try:
-        import math
-
-        return math.isnan(float(val))
-    except (TypeError, ValueError):
-        return False

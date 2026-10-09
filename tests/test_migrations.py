@@ -120,3 +120,20 @@ def test_migration_05_kurs_bestand_exists_and_content():
     assert "2026-09-25" in content
 
 
+def test_migration_06_etf_master_data_isins():
+    migration_file = (
+        Path(__file__).parent.parent / "database" / "migrations" / "06_etf_master_data_isins.sql"
+    )
+    assert migration_file.exists(), f"Migration file {migration_file} does not exist"
+
+    content = migration_file.read_text(encoding="utf-8").lower()
+    assert len(content) > 0
+    assert "update wertpapiere.etf" in content
+    assert "ie00b8gkdb10" in content
+    assert "ie00b4l5y983" in content
+    assert "ie00bj5jny98" in content
+    assert "a0rpwh" in content
+    assert "a113ff" in content
+
+
+
