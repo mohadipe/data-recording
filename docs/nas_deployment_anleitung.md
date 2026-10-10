@@ -18,38 +18,91 @@ Dadurch benötigt `Data-Recording` keine Host-IPs im Docker-Netzwerk, sondern sp
 
 ---
 
-## 📦 2. Release: Docker-Image bauen & bereitstellen
+## 📦 2. Zweistufiger Release- & Rollout-Prozess (Automatisiert)
 
-Es gibt zwei Wege, das Release-Image auf das NAS zu bringen:
+Der Bereitstellungsprozess ist in zwei getrennte, sichere Stufen aufgeteilt:
 
-### Option A: Lokal bauen und auf Docker Hub pushen (Empfohlen)
-
-Auf deinem Entwicklungsrechner im Verzeichnis `data-recording`:
-
-```bash
-cd /home/mohadipe/IdeaProjects/data-recording
-
-# 1. Multi-Stage Docker-Image bauen
-docker build -t mohadipe/data-recorder:latest -t mohadipe/data-recorder:2.0.0 .
-
-# 2. Image auf Docker Hub pushen
-docker push mohadipe/data-recorder:latest
-docker push mohadipe/data-recorder:2.0.0
+```
+┌─────────────────────────────────┐
+│ Stufe 1: GitHub Actions CI/CD   │
+│ - Tag Push (v*.*.*)             │ ──► ghcr.io/mohadipe/data-recorder:latest
+│ - Multi-Stage Build & Args      │ ──► GitHub Release & Changelog
+│ - Push zu GHCR                  │
+└─────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ Stufe 2: NAS Deployment-Skript  │
+│ - ./scripts/deploy_nas.sh       │ ──► Pull & Up in 03_apps
+│ - SSH-Verbindung zum NAS        │ ──► Healthcheck auf Port 9015
+│ - 1-Befehl-Rollout von innen    │ ──► Status & Versions-Report
+└─────────────────────────────────┘
 ```
 
-### Option B: Direkt auf dem NAS bauen (falls kein Docker Hub Push gewünscht)
+---
+
+### 2.1 Stufe 1: Release-Workflow auf GitHub Actions (`.github/workflows/release.yml`)
+
+Der Workflow wird vollautomatisch getriggert, sobald ein Git-Tag gepusht wird, oder kann manuell via `workflow_dispatch` in GitHub ausgelöst werden:
 
 ```bash
-# Auf das NAS verbinden
+# 1. Lokalen Stand taggen (SemVer)
+git tag v0.2.0
+
+# 2. Tag auf GitHub pushen
+git push origin v0.2.0
+```
+
+**Was der GitHub Actions Workflow ausführt:**
+1. **Multi-Stage Build (`linux/amd64`):**
+   * Baut das produktionsreife `Dockerfile` für die Zielarchitektur der Synology DS218+ (x86_64 / amd64).
+   * Injiziert Build-Args:
+     * `APP_VERSION`: Bereinigte Versionsnummer (z. B. `0.2.0`).
+     * `BUILD_COMMIT`: Git Commit SHA (`${{ github.sha }}`) für Traceability.
+2. **Registry Push:**
+   * Pusht das Image auf die **GitHub Container Registry (ghcr.io)**:
+     * `ghcr.io/mohadipe/data-recorder:<version>` und `latest`
+     * `ghcr.io/mohadipe/data-recording:<version>` und `latest`
+   * *Optional:* Bei hinterlegten Secrets (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) wird zusätzlich zu Docker Hub (`mohadipe/data-recorder`) gepusht.
+3. **Automatisches GitHub Release:**
+   * Erstellt ein GitHub Release mit automatischer Changelog-/Release-Notes-Generierung.
+
+---
+
+### 2.2 Stufe 2: 1-Befehl NAS-Rollout (`./scripts/deploy_nas.sh`)
+
+Da das NAS sicher im internen Heimnetzwerk steht, wird das neue Release über das Idempotente Deployment-Skript von deinem Rechner (oder dem Server Gibbs) angestoßen:
+
+```bash
+# Standard-Aufruf (nutzt Host 'nas' aus ~/.ssh/config)
+./scripts/deploy_nas.sh
+
+# Simulation / Trockenlauf ohne Änderungen auf dem NAS:
+./scripts/deploy_nas.sh --dry-run
+
+# Mit expliziter IP-Adresse oder alternativen Parametern:
+NAS_HOST=192.168.2.125 ./scripts/deploy_nas.sh
+```
+
+**Was das Skript `deploy_nas.sh` automatisch durchführt:**
+1. **SSH-Verbindung:** Verbindet sich per SSH auf das NAS (`ssh nas`).
+2. **Image Pull:** Wechselt in `/volume1/docker/nas-infra/03_apps` und zieht das neueste Image via `docker compose pull data-recording`.
+3. **Zero-Downtime Neustart:** Aktualisiert den Service ohne Neustart abhängiger Container via `docker compose up -d --no-deps data-recording`.
+4. **Automatischer Healthcheck:** Führt eine Retry-Schleife gegen `http://localhost:9015/health` durch (bis zu 15 Versuche).
+5. **Erfolgs-Report:** Gibt die verifizierte Anwendungsversion und den aktuellen Docker-Status im Terminal aus.
+
+---
+
+### 2.3 Manueller Fallback (Ad-hoc)
+
+Falls das Skript nicht zur Hand ist, können die Schritte auch manuell via SSH ausgeführt werden:
+
+```bash
 ssh nas
-
-# In das App-Verzeichnis wechseln oder Repo klonen
-cd /volume1/docker
-git clone https://github.com/mohadipe/data-recording.git data-recording-src
-cd data-recording-src
-
-# Image direkt auf der Synology bauen
-docker build -t mohadipe/data-recorder:latest .
+cd /volume1/docker/nas-infra/03_apps
+docker compose pull data-recording
+docker compose up -d --no-deps data-recording
+curl -fs http://localhost:9015/health
 ```
 
 ---
@@ -98,9 +151,21 @@ UPDATE etf SET aktiv = FALSE WHERE wkn = 'Crypto Ether';
 
 ---
 
-## 🚢 4. Deployment via `nas-infra`
+## 🚢 4. Deployment via `deploy_nas.sh` & `nas-infra`
 
-In `nas-infra` ist Stack 03 (`03_apps/docker-compose.yaml`) bereits für `Data-Recording 2.0` konfiguriert:
+### 4.1 Standard: 1-Befehl-Rollout (Empfohlen)
+
+Führe einfach das Deployment-Skript im Repository-Root aus:
+
+```bash
+./scripts/deploy_nas.sh
+```
+
+Das Skript verbindet sich via SSH, aktualisiert das Image und den Container in `03_apps`, wartet auf den Healthcheck und gibt die Bestätigung aus.
+
+### 4.2 Alternativ: Vollständiger Stack-Neustart via `nas.sh`
+
+Falls Änderungen an der Stack-Konfiguration in `nas-infra` vorgenommen wurden:
 
 ```bash
 # 1. Auf das NAS verbinden
@@ -174,3 +239,44 @@ curl -X POST http://192.168.2.125:9015/api/finance/scan-hibiscus
 * **Monitoring & Dashboard:**
   * Durch Stack 05 (`05_monitoring`) sammelt Promtail die Docker-Logs automatisch ein.
   * In Grafana ([http://192.168.2.125:3001](http://192.168.2.125:3001)) unter *Explore* / Loki mit `{container_name="Data-Recording"}` einsehbar.
+
+---
+
+## 🤖 7. Optional: Vollautomatisches CD via Self-Hosted GitHub Actions Runner
+
+Wer das Deployment nach einem Tag-Push vollautomatisch (Continuous Deployment) ohne manuelle Ausführung von `./scripts/deploy_nas.sh` durchführen möchte, kann einen **Self-Hosted Runner** im internen Heimnetzwerk anbinden (z. B. auf dem Server `gibbs`).
+
+### Vorteile
+* Das NAS muss **keine** öffentlichen Ports im Router öffnen.
+* Der Runner verbindet sich outbound (HTTPS) zu GitHub, empfängt den Deployment-Trigger und führt das Rollout von innen heraus aus.
+
+### Einrichtung auf dem Server (z. B. Gibbs)
+
+1. **Runner in GitHub registrieren:**
+   * Unter GitHub: Repository Settings ➔ Actions ➔ Runners ➔ *New self-hosted runner*.
+   * Download & Installation des Runners auf dem internen Host.
+   * Labels vergeben: z. B. `self-hosted`, `linux`, `heimnetz`.
+
+2. **CD-Workflow ergänzen (`.github/workflows/deploy.yml`):**
+   ```yaml
+   name: Continuous Deployment (NAS)
+
+   on:
+     workflow_run:
+       workflows: ["Release & Publish Container Image"]
+       types: [completed]
+       branches: [main]
+
+   jobs:
+     deploy:
+       if: ${{ github.event.workflow_run.conclusion == 'success' }}
+       runs-on: [self-hosted, heimnetz]
+       steps:
+         - name: Checkout Code
+           uses: actions/checkout@v4
+
+         - name: Rollout auf Synology NAS
+           run: |
+             chmod +x ./scripts/deploy_nas.sh
+             ./scripts/deploy_nas.sh
+   ```

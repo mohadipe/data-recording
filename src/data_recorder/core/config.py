@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # General App Settings
     APP_NAME: str = "data-recorder"
     APP_VERSION: str = "0.1.0"
+    BUILD_COMMIT: str = "unknown"
     ENVIRONMENT: Literal["development", "production", "test"] = "development"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"

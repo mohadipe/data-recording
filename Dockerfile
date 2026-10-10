@@ -30,6 +30,10 @@ RUN rm -rf /opt/venv/lib/python3.12/site-packages/pip* /opt/venv/bin/pip* && \
 # Stage 2: Final runtime stage
 FROM python:3.12-slim AS runner
 
+# Build arguments for versioning and traceability
+ARG APP_VERSION=0.1.0
+ARG BUILD_COMMIT=unknown
+
 # Create non-root system user and group
 RUN groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
@@ -46,7 +50,9 @@ COPY --chown=appuser:appuser src/ /app/src/
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH="/app/src" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_VERSION=${APP_VERSION} \
+    BUILD_COMMIT=${BUILD_COMMIT}
 
 # Create volume mount directories with appuser ownership
 RUN mkdir -p /app/logs /app/data/uploads /app/data/failed_uploads && \

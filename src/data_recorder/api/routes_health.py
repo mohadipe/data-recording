@@ -10,6 +10,7 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     app_name: str
+    commit: str = "unknown"
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -20,4 +21,5 @@ def get_health() -> HealthResponse:
         status="ok",
         version=settings.APP_VERSION,
         app_name=settings.APP_NAME,
+        commit=settings.BUILD_COMMIT,
     )
