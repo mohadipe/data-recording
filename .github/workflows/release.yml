@@ -1,0 +1,104 @@
+name: Release & Publish Container Image
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to release (e.g. 0.2.0 or v0.2.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Build, Publish & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Version & Tag
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            RAW_VER="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RAW_VER="${GITHUB_REF_NAME#v}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            RAW_VER="${GITHUB_REF_NAME}"
+          else
+            RAW_VER="0.1.0"
+          fi
+          # Strip leading 'v' for semantic application version
+          CLEAN_VER="${RAW_VER#v}"
+          echo "version=${CLEAN_VER}" >> $GITHUB_OUTPUT
+          echo "tag=v${CLEAN_VER}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub (optional)
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Configure Image Tags
+        id: tags
+        run: |
+          TAGS="ghcr.io/mohadipe/data-recorder:${{ steps.version.outputs.version }}
+          ghcr.io/mohadipe/data-recorder:latest
+          ghcr.io/mohadipe/data-recording:${{ steps.version.outputs.version }}
+          ghcr.io/mohadipe/data-recording:latest"
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            TAGS="${TAGS}
+          mohadipe/data-recorder:${{ steps.version.outputs.version }}
+          mohadipe/data-recorder:latest"
+          fi
+          echo "tags<<EOF" >> $GITHUB_OUTPUT
+          echo "$TAGS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            BUILD_COMMIT=${{ github.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

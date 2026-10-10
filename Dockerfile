@@ -30,6 +30,11 @@ RUN rm -rf /opt/venv/lib/python3.12/site-packages/pip* /opt/venv/bin/pip* && \
 # Stage 2: Final runtime stage
 FROM python:3.12-slim AS runner
 
+# Build arguments for versioning and traceability
+ARG APP_VERSION=""
+ARG BUILD_COMMIT=""
+ARG BUILD_DATE=""
+
 # Create non-root system user and group
 RUN groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
@@ -41,11 +46,6 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Copy application source
 COPY --chown=appuser:appuser src/ /app/src/
-
-# Build metadata arguments
-ARG APP_VERSION=""
-ARG BUILD_COMMIT=""
-ARG BUILD_DATE=""
 
 # Set environment variables
 ENV PATH="/opt/venv/bin:$PATH" \

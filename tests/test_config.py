@@ -5,6 +5,7 @@ def test_default_settings():
     settings = Settings()
     assert settings.APP_NAME == "data-recorder"
     assert settings.APP_VERSION == "0.1.0"
+    assert settings.BUILD_COMMIT is None
     assert settings.PORT == 9015
     assert settings.DB_PORT == 3306
     assert settings.DB_HOST == "localhost"
