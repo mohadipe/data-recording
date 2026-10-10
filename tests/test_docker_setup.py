@@ -26,6 +26,12 @@ def test_dockerfile_exists_and_content():
     assert "--host" in content and "0.0.0.0" in content
     assert "--port" in content and "9015" in content
 
+    # Build-Args and Versioning
+    assert "ARG APP_VERSION" in content, "Dockerfile should accept ARG APP_VERSION"
+    assert "ARG BUILD_COMMIT" in content, "Dockerfile should accept ARG BUILD_COMMIT"
+    assert "APP_VERSION=" in content or "APP_VERSION=${" in content, "Dockerfile should set APP_VERSION env var"
+    assert "BUILD_COMMIT=" in content or "BUILD_COMMIT=${" in content, "Dockerfile should set BUILD_COMMIT env var"
+
 
 def test_dockerignore_exists_and_content():
     dockerignore_path = REPO_ROOT / ".dockerignore"

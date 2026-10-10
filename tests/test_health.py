@@ -21,3 +21,5 @@ def test_health_endpoint_payload(client):
     assert data.get("status") == "ok"
     assert "version" in data
     assert data.get("version") == "0.1.0"
+    assert "commit" in data
+    assert data.get("commit") == "unknown"
