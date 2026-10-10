@@ -1,17 +1,16 @@
 import datetime
 import logging
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from data_recorder.core.database import get_db_session
+from data_recorder.core.templates import templates
 from data_recorder.models.wertpapiere import Etf, WknBestandDatum, WknKursDatum
 from data_recorder.services.hibiscus_service import HibiscusService
 from data_recorder.services.stock_price_service import StockPriceService
@@ -89,12 +88,24 @@ class CreateSecurityRequest(BaseModel):
     wkn: str = Field(..., min_length=1, max_length=255, description="WKN des Wertpapiers")
     isin: str | None = Field(None, max_length=12, description="12-stellige ISIN")
     name: str | None = Field(None, max_length=255, description="Bezeichnung des Wertpapiers")
-    typ: str = Field("ETF", max_length=50, description="Typ des Wertpapiers (z. B. ETF, Aktie, Fonds)")
-    ticker_yahoo: str | None = Field(None, max_length=50, description="Ticker Symbol (z. B. EUNL.DE)")
-    depot: str = Field("cortal_consors", max_length=50, description="Depot (z. B. cortal_consors, scalable_capital)")
-    handelsplatz: str = Field("tradegate", max_length=50, description="Handelsplatz (z. B. tradegate, eix, gettex, xetra)")
+    typ: str = Field(
+        "ETF", max_length=50, description="Typ des Wertpapiers (z. B. ETF, Aktie, Fonds)"
+    )
+    ticker_yahoo: str | None = Field(
+        None, max_length=50, description="Ticker Symbol (z. B. EUNL.DE)"
+    )
+    depot: str = Field(
+        "cortal_consors",
+        max_length=50,
+        description="Depot (z. B. cortal_consors, scalable_capital)",
+    )
+    handelsplatz: str = Field(
+        "tradegate", max_length=50, description="Handelsplatz (z. B. tradegate, eix, gettex, xetra)"
+    )
     aktiv: bool = True
-    initial_anteile: Decimal | None = Field(None, ge=Decimal("0"), description="Optionaler Anfangsbestand (Anteile)")
+    initial_anteile: Decimal | None = Field(
+        None, ge=Decimal("0"), description="Optionaler Anfangsbestand (Anteile)"
+    )
     initial_datum: datetime.date | None = Field(None, description="Stichtag für den Anfangsbestand")
 
 
@@ -374,10 +385,22 @@ async def create_security(
             )
 
     name_clean = request.name.strip() if request.name and request.name.strip() else None
-    ticker_clean = request.ticker_yahoo.strip() if request.ticker_yahoo and request.ticker_yahoo.strip() else None
+    ticker_clean = (
+        request.ticker_yahoo.strip()
+        if request.ticker_yahoo and request.ticker_yahoo.strip()
+        else None
+    )
     typ_clean = request.typ.strip() if request.typ and request.typ.strip() else "ETF"
-    depot_clean = request.depot.strip().lower() if request.depot and request.depot.strip() else "cortal_consors"
-    handelsplatz_clean = request.handelsplatz.strip().lower() if request.handelsplatz and request.handelsplatz.strip() else "tradegate"
+    depot_clean = (
+        request.depot.strip().lower()
+        if request.depot and request.depot.strip()
+        else "cortal_consors"
+    )
+    handelsplatz_clean = (
+        request.handelsplatz.strip().lower()
+        if request.handelsplatz and request.handelsplatz.strip()
+        else "tradegate"
+    )
 
     new_etf = Etf(
         wkn=wkn_clean,
@@ -549,11 +572,7 @@ async def get_holdings(
     session: Session = Depends(get_wertpapiere_db),
 ) -> Any:
     """Gibt die Liste aller aktiven Wertpapiere mit aktuellem Bestand und Kurs zurück."""
-    stmt = (
-        select(Etf)
-        .where(Etf.aktiv.is_(True))
-        .order_by(Etf.id)
-    )
+    stmt = select(Etf).where(Etf.aktiv.is_(True)).order_by(Etf.id)
     if depot and depot.strip() and depot.strip().lower() not in ("all", "gesamt"):
         stmt = stmt.where(Etf.depot == depot.strip())
 
@@ -571,13 +590,17 @@ async def get_holdings(
         .group_by(WknBestandDatum.wkn_id)
         .subquery()
     )
-    latest_bestaende = session.execute(
-        select(WknBestandDatum).join(
-            bestand_sub,
-            (WknBestandDatum.wkn_id == bestand_sub.c.wkn_id)
-            & (WknBestandDatum.datum == bestand_sub.c.max_datum),
+    latest_bestaende = (
+        session.execute(
+            select(WknBestandDatum).join(
+                bestand_sub,
+                (WknBestandDatum.wkn_id == bestand_sub.c.wkn_id)
+                & (WknBestandDatum.datum == bestand_sub.c.max_datum),
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     bestand_map = {b.wkn_id: b for b in latest_bestaende}
 
     # Letzten Kurs je WKN ermitteln
@@ -589,13 +612,17 @@ async def get_holdings(
         .group_by(WknKursDatum.wkn_id)
         .subquery()
     )
-    latest_kurse = session.execute(
-        select(WknKursDatum).join(
-            kurs_sub,
-            (WknKursDatum.wkn_id == kurs_sub.c.wkn_id)
-            & (WknKursDatum.datum == kurs_sub.c.max_datum),
+    latest_kurse = (
+        session.execute(
+            select(WknKursDatum).join(
+                kurs_sub,
+                (WknKursDatum.wkn_id == kurs_sub.c.wkn_id)
+                & (WknKursDatum.datum == kurs_sub.c.max_datum),
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     kurs_map = {k.wkn_id: k for k in latest_kurse}
 
     results: list[HoldingItemResponse] = []
@@ -736,10 +763,6 @@ async def delete_holding(
     session.delete(record)
     session.commit()
     return {"status": "ok", "message": f"Bestandseintrag {id} erfolgreich gelöscht."}
-
-
-TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def format_currency_de(val: float | Decimal | None) -> str:

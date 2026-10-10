@@ -31,8 +31,9 @@ RUN rm -rf /opt/venv/lib/python3.12/site-packages/pip* /opt/venv/bin/pip* && \
 FROM python:3.12-slim AS runner
 
 # Build arguments for versioning and traceability
-ARG APP_VERSION=0.1.0
-ARG BUILD_COMMIT=unknown
+ARG APP_VERSION=""
+ARG BUILD_COMMIT=""
+ARG BUILD_DATE=""
 
 # Create non-root system user and group
 RUN groupadd --gid 1000 appuser && \
@@ -52,7 +53,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     APP_VERSION=${APP_VERSION} \
-    BUILD_COMMIT=${BUILD_COMMIT}
+    BUILD_COMMIT=${BUILD_COMMIT} \
+    BUILD_DATE=${BUILD_DATE}
 
 # Create volume mount directories with appuser ownership
 RUN mkdir -p /app/logs /app/data/uploads /app/data/failed_uploads && \

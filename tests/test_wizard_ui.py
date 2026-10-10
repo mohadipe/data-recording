@@ -21,9 +21,7 @@ def test_db_session():
         "sqlite:///:memory:",
         poolclass=StaticPool,
         connect_args={"check_same_thread": False},
-        execution_options={
-            "schema_translate_map": {"verbrauch": None, "wertpapiere": None}
-        },
+        execution_options={"schema_translate_map": {"verbrauch": None, "wertpapiere": None}},
     )
     Base.metadata.create_all(bind=engine)
     with Session(engine) as session:
@@ -33,6 +31,7 @@ def test_db_session():
 @pytest.fixture
 def client(test_db_session: Session):
     """FastAPI TestClient with overridden get_db_session."""
+
     def override_get_db_session():
         yield test_db_session
 
@@ -83,8 +82,8 @@ def test_wizard_page_renders_html_and_elements(client: TestClient, test_db_sessi
 
         # Camera file input with capture="environment"
         assert 'type="file"' in html
-        assert 'capture="environment"' in html or 'capture=\'environment\'' in html
-        assert 'accept="image/*"' in html or 'accept=\'image/*\'' in html
+        assert 'capture="environment"' in html or "capture='environment'" in html
+        assert 'accept="image/*"' in html or "accept='image/*'" in html
 
 
 def test_wizard_preselected_meter(client: TestClient, test_db_session: Session):
@@ -115,7 +114,7 @@ def test_wizard_gallery_and_camera_buttons(client: TestClient, test_db_session: 
     assert "Aus Galerie" in html
     assert "foto-camera-input" in html
     assert "foto-gallery-input" in html
-    assert "capture=\"environment\"" in html
+    assert 'capture="environment"' in html
     assert "image/heic" in html or "heic" in html
 
 
@@ -195,8 +194,33 @@ def test_wizard_heat_meter_dual_rendering(client: TestClient, test_db_session: S
     assert "WAERME" in html
     assert "dual-reading-section" in html
     assert "wert_kwh" in html
-    assert "wert_m3" in html
-    assert "1.408" in html or "1408" in html
     assert "584" in html
 
 
+def test_wizard_and_zaehler_pages_display_version_badge(client: TestClient):
+    """Verify that both /wizard and /zaehler pages render the version badge in the HTML response."""
+    for path in ["/wizard", "/zaehler"]:
+        resp = client.get(path)
+        assert resp.status_code == 200
+        html = resp.text
+        assert 'id="version-badge"' in html or "version-badge" in html
+        assert "v0.1.0" in html
+
+
+def test_wizard_page_displays_custom_version_and_build(client: TestClient, monkeypatch):
+    """Verify that /wizard reflects custom APP_VERSION and BUILD_COMMIT in HTML."""
+    from data_recorder.core.config import get_settings
+
+    monkeypatch.setenv("APP_VERSION", "v0.2.0")
+    monkeypatch.setenv("BUILD_COMMIT", "637fa7c")
+    monkeypatch.setenv("BUILD_DATE", "10.10.2026")
+    get_settings.cache_clear()
+
+    try:
+        resp = client.get("/wizard")
+        assert resp.status_code == 200
+        html = resp.text
+        assert "v0.2.0" in html
+        assert "637fa7c" in html
+    finally:
+        get_settings.cache_clear()

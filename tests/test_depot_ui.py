@@ -38,6 +38,7 @@ def db_session():
 @pytest.fixture
 def client(db_session: Session):
     """FastAPI TestClient with overridden database dependencies."""
+
     def override_db():
         yield db_session
 
@@ -58,7 +59,7 @@ def test_depot_page_returns_200_and_html(client: TestClient, db_session: Session
 
     # Page title and navigation
     assert "<title>Depot" in html
-    assert "href=\"/depot\"" in html or "href='/depot'" in html
+    assert 'href="/depot"' in html or "href='/depot'" in html
     assert "Depot" in html
 
     # Core UI components
@@ -163,7 +164,7 @@ def test_depot_renders_active_securities_and_holdings(client: TestClient, db_ses
     # History entries rendered
     assert "Bestandshistorie" in html
     assert "btn-delete-holding" in html
-    assert 'data-holding-id="1"' in html or 'data-holding-id=' in html
+    assert 'data-holding-id="1"' in html or "data-holding-id=" in html
 
     # Modal and form elements
     assert 'id="holding-modal"' in html
@@ -322,4 +323,31 @@ def test_depot_security_creation_modal_and_type_badges(client: TestClient, db_se
     assert 'id="sec-handelsplatz"' in html
 
 
+def test_depot_page_displays_version_badge(client: TestClient, db_session: Session):
+    """Verify that /depot renders the version badge in the HTML response."""
+    response = client.get("/depot")
+    assert response.status_code == 200
+    html = response.text
+    assert 'id="version-badge"' in html or "version-badge" in html
+    assert "v0.1.0" in html
 
+
+def test_depot_page_displays_custom_version_and_build(
+    client: TestClient, db_session: Session, monkeypatch
+):
+    """Verify that /depot reflects APP_VERSION and BUILD_COMMIT in HTML."""
+    from data_recorder.core.config import get_settings
+
+    monkeypatch.setenv("APP_VERSION", "v0.2.0")
+    monkeypatch.setenv("BUILD_COMMIT", "637fa7c")
+    monkeypatch.setenv("BUILD_DATE", "10.10.2026")
+    get_settings.cache_clear()
+
+    try:
+        response = client.get("/depot")
+        assert response.status_code == 200
+        html = response.text
+        assert "v0.2.0" in html
+        assert "637fa7c" in html
+    finally:
+        get_settings.cache_clear()
