@@ -35,10 +35,7 @@ def test_database_url_generation():
         DB_NAME_VERBRAUCH="verbrauch",
     )
     url = settings.get_database_url("verbrauch")
-    assert (
-        url
-        == "mysql+pymysql://recorder:mypassword@nas.local:3306/verbrauch?charset=utf8mb4"
-    )
+    assert url == "mysql+pymysql://recorder:mypassword@nas.local:3306/verbrauch?charset=utf8mb4"
 
 
 def test_get_settings_cached():
@@ -92,3 +89,53 @@ def test_heizoel_settings_custom_env(monkeypatch):
     assert settings.HEIZOEL_SCRAPER_TIMEOUT == 20.5
 
 
+def test_version_and_build_defaults():
+    settings = Settings()
+    assert settings.APP_VERSION == "0.1.0"
+    assert settings.BUILD_COMMIT is None
+    assert settings.BUILD_DATE is None
+
+
+def test_version_and_build_custom_env(monkeypatch):
+    monkeypatch.setenv("APP_VERSION", "v0.2.0")
+    monkeypatch.setenv("BUILD_COMMIT", "637fa7c")
+    monkeypatch.setenv("BUILD_DATE", "10.10.2026")
+
+    settings = Settings()
+    assert settings.APP_VERSION == "v0.2.0"
+    assert settings.BUILD_COMMIT == "637fa7c"
+    assert settings.BUILD_DATE == "10.10.2026"
+
+
+def test_data_recorder_package_version():
+    import data_recorder
+
+    assert hasattr(data_recorder, "__version__")
+    assert data_recorder.__version__ == "0.1.0"
+
+
+def test_get_app_version_resolution_order(monkeypatch):
+    from importlib.metadata import PackageNotFoundError
+
+    from data_recorder.core.config import get_app_version
+
+    # Case 1: APP_VERSION env var takes highest precedence
+    monkeypatch.setenv("APP_VERSION", "v1.5.0")
+    assert get_app_version() == "v1.5.0"
+
+    monkeypatch.delenv("APP_VERSION", raising=False)
+
+    # Case 2: importlib.metadata version
+    monkeypatch.setattr(
+        "data_recorder.core.config.version",
+        lambda pkg: "0.9.9",
+    )
+    assert get_app_version() == "0.9.9"
+
+    # Case 3: PackageNotFoundError falls back to pyproject.toml
+    def mock_not_found(pkg):
+        raise PackageNotFoundError(pkg)
+
+    monkeypatch.setattr("data_recorder.core.config.version", mock_not_found)
+    # pyproject.toml in repo root has "0.1.0"
+    assert get_app_version() == "0.1.0"

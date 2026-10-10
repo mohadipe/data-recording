@@ -1,7 +1,51 @@
+import os
+import tomllib
 from functools import lru_cache
-from typing import Literal
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+from typing import Any, Literal
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def get_app_version() -> str:
+    """Dynamically resolves the application version.
+
+    Priority:
+    1. APP_VERSION environment variable
+    2. importlib.metadata from installed package ('data-recorder')
+    3. pyproject.toml in repository root
+    4. data_recorder.__version__
+    5. Fallback '0.1.0'
+    """
+    if env_version := os.getenv("APP_VERSION"):
+        return env_version
+
+    try:
+        return version("data-recorder")
+    except (PackageNotFoundError, Exception):
+        pass
+
+    try:
+        pyproject_path = Path(__file__).resolve().parents[3] / "pyproject.toml"
+        if pyproject_path.is_file():
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                if "project" in data and "version" in data["project"]:
+                    return str(data["project"]["version"])
+    except Exception:
+        pass
+
+    try:
+        import data_recorder
+
+        if hasattr(data_recorder, "__version__"):
+            return str(data_recorder.__version__)
+    except Exception:
+        pass
+
+    return "0.1.0"
 
 
 class Settings(BaseSettings):
@@ -16,12 +60,28 @@ class Settings(BaseSettings):
 
     # General App Settings
     APP_NAME: str = "data-recorder"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = Field(default_factory=get_app_version)
+    BUILD_COMMIT: str | None = None
+    BUILD_DATE: str | None = None
     ENVIRONMENT: Literal["development", "production", "test"] = "development"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 9015
     LOG_LEVEL: str = "INFO"
+
+    @field_validator("APP_VERSION", mode="before")
+    @classmethod
+    def validate_app_version(cls, v: Any) -> str:
+        if not v:
+            return get_app_version()
+        return str(v)
+
+    @field_validator("BUILD_COMMIT", "BUILD_DATE", mode="before")
+    @classmethod
+    def clean_empty_build_info(cls, v: Any) -> str | None:
+        if not v:
+            return None
+        return str(v)
 
     # MySQL Database Settings (Synology NAS)
     DB_HOST: str = "localhost"

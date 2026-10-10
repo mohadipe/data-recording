@@ -42,11 +42,19 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy application source
 COPY --chown=appuser:appuser src/ /app/src/
 
+# Build metadata arguments
+ARG APP_VERSION=""
+ARG BUILD_COMMIT=""
+ARG BUILD_DATE=""
+
 # Set environment variables
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH="/app/src" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_VERSION=${APP_VERSION} \
+    BUILD_COMMIT=${BUILD_COMMIT} \
+    BUILD_DATE=${BUILD_DATE}
 
 # Create volume mount directories with appuser ownership
 RUN mkdir -p /app/logs /app/data/uploads /app/data/failed_uploads && \

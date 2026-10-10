@@ -51,7 +51,13 @@
                     ⚡
                 </div>
                 <div>
-                    <h1 class="text-lg font-bold text-slate-100 tracking-tight leading-none">Zählerstand Erfassung</h1>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-lg font-bold text-slate-100 tracking-tight leading-none">Zählerstand Erfassung</h1>
+                        <span id="version-badge" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-800 text-slate-400 border border-slate-700/60"
+                              title="{% if build_commit or build_date %}Build: {{ build_commit or 'n/a' }}{% if build_date %} • {{ build_date }}{% endif %}{% else %}Version {{ app_version }}{% endif %}">
+                            {{ display_version }}
+                        </span>
+                    </div>
                     <span class="text-xs text-slate-400">Monatlicher Foto-Wizard</span>
                 </div>
             </div>
@@ -72,6 +78,22 @@
         <main class="flex-1 flex flex-col">
             {% block content %}{% endblock %}
         </main>
+
+        <!-- App Footer -->
+        <footer class="mt-8 pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-500">
+            <div class="flex items-center space-x-1.5">
+                <span>data-recorder</span>
+                <span id="footer-version-badge" class="font-mono text-[11px] text-slate-400"
+                      title="{% if build_commit or build_date %}Build: {{ build_commit or 'n/a' }}{% if build_date %} • {{ build_date }}{% endif %}{% else %}Version {{ app_version }}{% endif %}">
+                    {{ display_version }}
+                </span>
+            </div>
+            {% if build_commit or build_date %}
+            <div class="font-mono text-[10px] text-slate-600">
+                Build: {{ build_commit or '' }}{% if build_commit and build_date %} • {% endif %}{{ build_date or '' }}
+            </div>
+            {% endif %}
+        </footer>
     </div>
 
     <!-- PWA Service Worker Registration -->

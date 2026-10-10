@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime
 import logging
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
 
 from fastapi import (
@@ -21,12 +20,12 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from data_recorder.core.database import get_db_session
+from data_recorder.core.templates import templates
 from data_recorder.models.verbrauch import Messwert, Zaehler
 from data_recorder.services.exif_service import extract_capture_datetime
 from data_recorder.services.shared_photo_service import SharedPhotoService
@@ -34,9 +33,6 @@ from data_recorder.services.shared_photo_service import SharedPhotoService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["wizard"])
-
-TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 class ZaehlerCreateRequest(BaseModel):
@@ -61,7 +57,6 @@ class ZaehlerAusbauRequest(BaseModel):
     """Schema for marking a meter as decommissioned."""
 
     ausbau_dt: datetime.date = Field(default_factory=datetime.date.today)
-
 
 
 def get_default_unit(typ: str) -> str:
@@ -140,8 +135,12 @@ def get_meter_readings_info(z: Zaehler, session: Session) -> dict[str, Any]:
             "last_wert_m3": last_m3_val,
             "last_datum_m3": last_m3_date,
             "formatted_reading": formatted_reading,
-            "formatted_kwh": f"Letzter Stand (vom {mw_kwh.datum.strftime('%d.%m.%Y')}): {format_german_number(mw_kwh.wert)} kWh" if mw_kwh else "Kein Stand erfasst",
-            "formatted_m3": f"Letzter Stand (vom {mw_m3.datum.strftime('%d.%m.%Y')}): {format_german_number(mw_m3.wert)} m³" if mw_m3 else "Kein Stand erfasst",
+            "formatted_kwh": f"Letzter Stand (vom {mw_kwh.datum.strftime('%d.%m.%Y')}): {format_german_number(mw_kwh.wert)} kWh"
+            if mw_kwh
+            else "Kein Stand erfasst",
+            "formatted_m3": f"Letzter Stand (vom {mw_m3.datum.strftime('%d.%m.%Y')}): {format_german_number(mw_m3.wert)} m³"
+            if mw_m3
+            else "Kein Stand erfasst",
         }
     else:
         latest_reading_stmt = (
@@ -220,7 +219,9 @@ async def get_wizard_page(
     if error == "empty_file":
         error_message = "Die geteilte Datei war leer. Bitte wähle ein gültiges Zählerfoto."
     elif error == "invalid_image":
-        error_message = "Das geteilte Bildformat wird nicht unterstützt oder die Datei ist beschädigt."
+        error_message = (
+            "Das geteilte Bildformat wird nicht unterstützt oder die Datei ist beschädigt."
+        )
     elif error:
         error_message = f"Fehler beim Übernehmen des Fotos ({error})."
 
@@ -489,7 +490,9 @@ async def receive_shared_photo(
         )
 
 
-@router.get("/api/wizard/shared-photo/{photo_id}", summary="Get shared photo bytes (or JPEG preview)")
+@router.get(
+    "/api/wizard/shared-photo/{photo_id}", summary="Get shared photo bytes (or JPEG preview)"
+)
 async def get_shared_photo(
     photo_id: str,
     preview: bool = False,
@@ -684,9 +687,7 @@ async def submit_reading(
             .limit(1)
         )
         prior_reading = session.scalars(prior_reading_stmt).first()
-        verbrauch = (
-            (wert - prior_reading.wert) if (prior_reading and wert is not None) else None
-        )
+        verbrauch = (wert - prior_reading.wert) if (prior_reading and wert is not None) else None
 
         existing_stmt = select(Messwert).where(
             Messwert.zaehler_id == zaehler_id,
@@ -759,7 +760,10 @@ async def submit_reading(
             paperless = PaperlessService()
             title = f"Zählerstand {zaehler.typ} {zaehler.geraete_nr} - {reading_date.strftime('%d.%m.%Y')}"
             created_dt = datetime.datetime.combine(reading_date, datetime.datetime.min.time())
-            filename = shared_meta.original_filename or f"zaehler_{zaehler_id}_{reading_date.isoformat()}.jpg"
+            filename = (
+                shared_meta.original_filename
+                or f"zaehler_{zaehler_id}_{reading_date.isoformat()}.jpg"
+            )
 
             background_tasks.add_task(
                 paperless.upload_document,
@@ -792,4 +796,3 @@ async def submit_reading(
         "foto_uploaded": foto_uploaded,
         "next_zaehler_id": next_zaehler.id if next_zaehler else None,
     }
-
