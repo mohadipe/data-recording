@@ -63,6 +63,7 @@ class HibiscusUmsatz(Base):
     zweck3: Mapped[str | None] = mapped_column(Text, nullable=True)
     kommentar: Mapped[str | None] = mapped_column(Text, nullable=True)
     art: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    umsatztyp_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     customerref: Mapped[str | None] = mapped_column(String(100), nullable=True)
     primanota: Mapped[str | None] = mapped_column(String(100), nullable=True)
 

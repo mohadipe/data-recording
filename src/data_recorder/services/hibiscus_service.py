@@ -75,18 +75,19 @@ def extract_wkn_or_isin(
 def categorize_transaction(
     text: str,
     betrag: Decimal,
+    umsatztyp_id: int | None = None,
 ) -> tuple[str | None, str | None]:
-    """Categorizes a transaction based on keywords and amount sign.
+    """Categorizes a transaction based on keywords, category ID and amount sign.
 
     Returns:
         tuple[category, typ]:
         category: "SPARPLAN", "DIVIDENDE", or None
         typ: "SPARPLAN", "KAUF", "DIVIDENDE", "AUSSCHUETTUNG", "ERTRAG", or None
     """
-    if not text:
+    if not text and umsatztyp_id is None:
         return None, None
 
-    text_lower = text.lower()
+    text_lower = text.lower() if text else ""
 
     if betrag < Decimal("0"):
         # Sparplan or Purchase (Debit / negative amount)
@@ -101,7 +102,9 @@ def categorize_transaction(
             return "DIVIDENDE", "AUSSCHUETTUNG"
         elif "ertrag" in text_lower:
             return "DIVIDENDE", "ERTRAG"
-        elif any(kw in text_lower for kw in ["dividende", "kupon"]):
+        elif any(kw in text_lower for kw in ["dividende", "kupon", "zinsen/dividende"]):
+            return "DIVIDENDE", "DIVIDENDE"
+        elif umsatztyp_id == 61:
             return "DIVIDENDE", "DIVIDENDE"
 
     return None, None
@@ -204,6 +207,7 @@ class HibiscusService:
                 filter(
                     None,
                     [
+                        umsatz.art,
                         umsatz.zweck,
                         umsatz.zweck2,
                         umsatz.zweck3,
@@ -228,7 +232,11 @@ class HibiscusService:
                 continue
 
             betrag_decimal = Decimal(str(umsatz.betrag))
-            category, typ = categorize_transaction(full_text, betrag_decimal)
+            category, typ = categorize_transaction(
+                full_text,
+                betrag_decimal,
+                umsatztyp_id=umsatz.umsatztyp_id,
+            )
             if not category or not typ:
                 continue
 

@@ -203,6 +203,25 @@ class TestTransactionCategorization:
         )
         assert category is None
 
+    def test_categorize_consors_dividend_with_art_in_text(self):
+        """Verify Cortal Consors dividend with art='Zinsen/Dividende' is recognized as DIVIDENDE."""
+        category, typ = categorize_transaction(
+            "Zinsen/Dividende EREF+ KREF+NONREF SVWZ+VA.FTSE A.W.H.D.Y.UETF DLD WKN: A1T8FV",
+            Decimal("18.88"),
+        )
+        assert category == "DIVIDENDE"
+        assert typ == "DIVIDENDE"
+
+    def test_categorize_dividend_with_umsatztyp_id_61(self):
+        """Verify transaction with umsatztyp_id=61 (Dividende & Ausschüttungen) is recognized."""
+        category, typ = categorize_transaction(
+            "EREF+ KREF+NONREF SVWZ+VA.FTSE A.W.H.D.Y.UETF DLD WKN: A1T8FV",
+            Decimal("18.88"),
+            umsatztyp_id=61,
+        )
+        assert category == "DIVIDENDE"
+        assert typ in ("DIVIDENDE", "AUSSCHUETTUNG")
+
 
 class TestHibiscusScannerService:
     """Integration tests for HibiscusService scanning, matching, and persisting."""
@@ -374,3 +393,47 @@ class TestHibiscusScannerService:
         invest_entries = db_session.execute(select(WknInvestDatum)).scalars().all()
         assert len(invest_entries) == 1
         assert invest_entries[0].wkn_id == 1  # Only A1T8FV from DEPOT123
+
+    def test_scan_and_import_consors_real_world_dividend(
+        self, db_session: Session, sample_etfs: list[Etf]
+    ):
+        """Verify real-world Cortal Consors dividend with art='Zinsen/Dividende' and zweck3 is imported into wkn_ertrag_datum."""
+        service = HibiscusService()
+
+        konto = HibiscusKonto(
+            id=2,
+            kontonummer="0001234567",
+            iban="DE26760300800001234567",
+            bezeichnung="Kontokorrentkonto Privat",
+        )
+        db_session.add(konto)
+
+        # Real-world Consors dividend: art contains 'Zinsen/Dividende', zweck3 has WKN
+        u_div = HibiscusUmsatz(
+            id=728,
+            konto_id=2,
+            datum=datetime.date(2024, 7, 11),
+            valuta=datetime.date(2024, 7, 11),
+            betrag=Decimal("18.88"),
+            art="Zinsen/Dividende",
+            zweck="EREF+",
+            zweck2="KREF+NONREF",
+            zweck3="SVWZ+VA.FTSE A.W.H.D.Y.UETF DLD WKN: A1T8FV",
+            umsatztyp_id=61,
+        )
+        db_session.add(u_div)
+        db_session.commit()
+
+        result = service.scan_and_import(
+            session_wertpapiere=db_session,
+            session_hibiscus=db_session,
+        )
+
+        assert result.imported_count == 1
+        assert result.dividenden_count == 1
+
+        ertrag_entries = db_session.execute(select(WknErtragDatum)).scalars().all()
+        assert len(ertrag_entries) == 1
+        assert ertrag_entries[0].wkn_id == 1  # A1T8FV
+        assert ertrag_entries[0].betrag == Decimal("18.88")
+        assert ertrag_entries[0].datum == datetime.date(2024, 7, 11)
