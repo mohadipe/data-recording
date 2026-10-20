@@ -260,7 +260,7 @@ class HibiscusService:
                         )
                         session_wertpapiere.add(new_invest)
                     else:
-                        existing_invest.invest = invest_amount
+                        existing_invest.invest += invest_amount
 
                     result.sparplaene_count += 1
 
@@ -283,7 +283,7 @@ class HibiscusService:
                         )
                         session_wertpapiere.add(new_ertrag)
                     else:
-                        existing_ertrag.betrag = ertrag_amount
+                        existing_ertrag.betrag += ertrag_amount
 
                     result.dividenden_count += 1
 

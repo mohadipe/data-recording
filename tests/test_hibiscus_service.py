@@ -437,3 +437,52 @@ class TestHibiscusScannerService:
         assert ertrag_entries[0].wkn_id == 1  # A1T8FV
         assert ertrag_entries[0].betrag == Decimal("18.88")
         assert ertrag_entries[0].datum == datetime.date(2024, 7, 11)
+
+    def test_two_dividends_on_same_day_accumulate(
+        self, db_session: Session, sample_etfs: list[Etf]
+    ):
+        """Verify multiple dividends on the same date accumulate instead of overwriting."""
+        service = HibiscusService()
+
+        konto = HibiscusKonto(
+            id=2,
+            kontonummer="0001234567",
+            iban="DE26760300800001234567",
+            bezeichnung="Kontokorrentkonto Privat",
+        )
+        db_session.add(konto)
+
+        u1 = HibiscusUmsatz(
+            id=1001,
+            konto_id=2,
+            datum=datetime.date(2026, 9, 30),
+            betrag=Decimal("97.78"),
+            art="Zinsen/Dividende",
+            zweck3="SVWZ+VA.FTSE A.W.H.D.Y.UETF DLD WKN: A1T8FV",
+            umsatztyp_id=61,
+        )
+        u2 = HibiscusUmsatz(
+            id=1002,
+            konto_id=2,
+            datum=datetime.date(2026, 9, 30),
+            betrag=Decimal("2.25"),
+            art="Zinsen/Dividende",
+            zweck3="SVWZ+VA.FTSE A.W.H.D.Y.UETF DLD WKN: A1T8FV",
+            umsatztyp_id=61,
+        )
+        db_session.add_all([u1, u2])
+        db_session.commit()
+
+        result = service.scan_and_import(
+            session_wertpapiere=db_session,
+            session_hibiscus=db_session,
+        )
+
+        assert result.imported_count == 2
+        assert result.dividenden_count == 2
+
+        ertrag_entries = db_session.execute(select(WknErtragDatum)).scalars().all()
+        assert len(ertrag_entries) == 1
+        assert ertrag_entries[0].wkn_id == 1  # A1T8FV
+        assert ertrag_entries[0].betrag == Decimal("100.03")  # 97.78 + 2.25!
+
